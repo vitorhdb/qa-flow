@@ -1,0 +1,66 @@
+name: Quality Gate
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run Quality Analysis
+      run: |
+        npm run analyze -- --format json --output quality-report.json
+    
+    - name: Check Quality Gate
+      run: |
+        node scripts/check-quality-gate.js quality-report.json
+    
+    - name: Comment PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('quality-report.json', 'utf8'));
+          const passed = report.passed;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## Quality Gate ${passed ? '✅ PASSED' : '❌ FAILED'}
+            
+            ${passed ? 'O código passou na verificação de qualidade!' : 'O código não passou na verificação de qualidade.'}
+            
+            **Scores:**
+            - Risco: ${report.scores.risk}%
+            - Segurança: ${report.scores.security}%
+            - Qualidade: ${report.scores.quality}%
+            
+            **Findings:**
+            - Críticos: ${report.findings.critical}
+            - Altos: ${report.findings.high}
+            - Médios: ${report.findings.medium}
+            - Baixos: ${report.findings.low}
+            `
+          });
+    
+    - name: Fail if gate failed
+      if: failure()
+      run: |
+        echo "Quality Gate failed. Merge blocked."
+        exit 1

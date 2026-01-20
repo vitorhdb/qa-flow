@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "8000:8000"
+    volumes:
+      - ./backend/qa_insight_forge.db:/app/backend/qa_insight_forge.db
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=sqlite:///./qa_insight_forge.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Opcional: PostgreSQL para produção
+  # postgres:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_DB: qa_insight_forge
+  #     POSTGRES_USER: qa_user
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   postgres_data:

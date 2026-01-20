@@ -1,0 +1,216 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  :root {
+    /* QA Flow Professional Theme */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 14%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 14%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 199 89% 48%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 22%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 55%;
+
+    --accent: 199 89% 48%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 199 89% 48%;
+
+    --radius: 0.75rem;
+
+    /* Custom semantic colors for QA status */
+    --status-passed: 160 84% 39%;
+    --status-passed-foreground: 160 84% 95%;
+    --status-warning: 43 96% 56%;
+    --status-warning-foreground: 43 96% 10%;
+    --status-failed: 0 84% 60%;
+    --status-failed-foreground: 0 84% 95%;
+
+    /* Risk heatmap colors */
+    --risk-low: 160 84% 39%;
+    --risk-medium: 43 96% 56%;
+    --risk-high: 25 95% 53%;
+    --risk-critical: 0 84% 60%;
+
+    /* Card gradient overlays */
+    --gradient-risk: linear-gradient(135deg, hsl(0 84% 60% / 0.15) 0%, hsl(0 84% 60% / 0.05) 100%);
+    --gradient-quality: linear-gradient(135deg, hsl(199 89% 48% / 0.15) 0%, hsl(199 89% 48% / 0.05) 100%);
+    --gradient-security: linear-gradient(135deg, hsl(43 96% 56% / 0.15) 0%, hsl(43 96% 56% / 0.05) 100%);
+    --gradient-improvements: linear-gradient(135deg, hsl(160 84% 39% / 0.15) 0%, hsl(160 84% 39% / 0.05) 100%);
+
+    /* Shadows */
+    --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+    --shadow-glow-passed: 0 0 20px hsl(160 84% 39% / 0.3);
+    --shadow-glow-failed: 0 0 20px hsl(0 84% 60% / 0.3);
+
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 199 89% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 33% 18%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 217 33% 22%;
+    --sidebar-ring: 199 89% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  .metric-card {
+    @apply relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300;
+    box-shadow: var(--shadow-card);
+  }
+
+  .metric-card:hover {
+    @apply border-primary/30;
+    transform: translateY(-2px);
+  }
+
+  .metric-card-risk {
+    background: var(--gradient-risk);
+  }
+
+  .metric-card-quality {
+    background: var(--gradient-quality);
+  }
+
+  .metric-card-security {
+    background: var(--gradient-security);
+  }
+
+  .metric-card-improvements {
+    background: var(--gradient-improvements);
+  }
+
+  .quality-gate {
+    @apply relative flex items-center gap-3 rounded-xl border-2 px-6 py-4 font-semibold transition-all duration-300;
+  }
+
+  .quality-gate-passed {
+    @apply border-[hsl(var(--status-passed))] bg-[hsl(var(--status-passed)/0.1)] text-[hsl(var(--status-passed))];
+    box-shadow: var(--shadow-glow-passed);
+  }
+
+  .quality-gate-failed {
+    @apply border-[hsl(var(--status-failed))] bg-[hsl(var(--status-failed)/0.1)] text-[hsl(var(--status-failed))];
+    box-shadow: var(--shadow-glow-failed);
+  }
+
+  .code-editor {
+    @apply rounded-xl border border-border bg-muted/50 font-mono text-sm;
+    min-height: 300px;
+  }
+
+  .heatmap-cell {
+    @apply rounded-md transition-all duration-200 cursor-pointer;
+  }
+
+  .heatmap-cell:hover {
+    transform: scale(1.1);
+    z-index: 10;
+  }
+
+  .heatmap-low {
+    background-color: hsl(var(--risk-low));
+    opacity: 0.6;
+  }
+
+  .heatmap-medium {
+    background-color: hsl(var(--risk-medium));
+    opacity: 0.7;
+  }
+
+  .heatmap-high {
+    background-color: hsl(var(--risk-high));
+    opacity: 0.8;
+  }
+
+  .heatmap-critical {
+    background-color: hsl(var(--risk-critical));
+    opacity: 1;
+  }
+
+  .finding-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
+  }
+
+  .finding-critical {
+    @apply bg-[hsl(var(--risk-critical)/0.15)] text-[hsl(var(--risk-critical))];
+  }
+
+  .finding-high {
+    @apply bg-[hsl(var(--risk-high)/0.15)] text-[hsl(var(--risk-high))];
+  }
+
+  .finding-medium {
+    @apply bg-[hsl(var(--risk-medium)/0.15)] text-[hsl(var(--risk-medium))];
+  }
+
+  .finding-low {
+    @apply bg-[hsl(var(--risk-low)/0.15)] text-[hsl(var(--risk-low))];
+  }
+
+  .glass-panel {
+    @apply rounded-2xl border border-border/50 bg-card/80 backdrop-blur-xl;
+    box-shadow: var(--shadow-card);
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(199 89% 68%) 100%);
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}

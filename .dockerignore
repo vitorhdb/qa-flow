@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+*.log
+.DS_Store
+backend/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+qa_insight_forge.db
+qa_insight_forge.db-journal
