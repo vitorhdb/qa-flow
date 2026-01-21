@@ -1,32 +1,75 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Filter, FileCode, AlertTriangle } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Search, Filter, FileCode, AlertTriangle, GitBranch, Database } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RiskHeatmap } from '@/components/dashboard/RiskHeatmap';
 import { buildFileRiskMatrixItems, type FileRiskMatrixItem } from '@/lib/risk-matrix';
-import { db } from '@/lib/database';
+import { db, type GitRepository } from '@/lib/database';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export default function HeatmapPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterImpact, setFilterImpact] = useState<'all' | '1' | '2' | '3' | '4' | '5'>('all');
   const [filterProbability, setFilterProbability] = useState<'all' | '1' | '2' | '3' | '4' | '5'>('all');
+  const [filterRepository, setFilterRepository] = useState<string>('all');
+  const [filterBranch, setFilterBranch] = useState<string>('all');
+  const [repositories, setRepositories] = useState<GitRepository[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [allItems, setAllItems] = useState<FileRiskMatrixItem[]>([]);
 
   useEffect(() => {
+    loadRepositories();
     loadAnalyses();
+    
+    // Verifica se há filtros na navegação
+    if (location.state?.repositoryId) {
+      setFilterRepository(location.state.repositoryId);
+    }
+    if (location.state?.branch) {
+      setFilterBranch(location.state.branch);
+    }
   }, []);
+
+  const loadRepositories = async () => {
+    const repos = await db.getAllGitRepositories();
+    setRepositories(repos);
+    
+    // Extrai branches únicas das análises
+    const analyses = await db.getAllAnalyses();
+    const uniqueBranches = new Set<string>();
+    analyses.forEach(analysis => {
+      if (analysis.branch) {
+        uniqueBranches.add(analysis.branch);
+      }
+    });
+    setBranches(Array.from(uniqueBranches).sort());
+  };
 
   const loadAnalyses = async () => {
     try {
       setIsLoading(true);
-      const analyses = await db.getAllAnalyses();
+      let analyses = await db.getAllAnalyses();
+      
+      // Filtra por repositório se selecionado
+      if (filterRepository !== 'all') {
+        analyses = analyses.filter(analysis => 
+          analysis.metadata?.repositoryId === filterRepository
+        );
+      }
+      
+      // Filtra por branch se selecionado
+      if (filterBranch !== 'all') {
+        analyses = analyses.filter(analysis => 
+          analysis.branch === filterBranch
+        );
+      }
       
       if (!analyses || analyses.length === 0) {
         setAllItems([]);
@@ -96,6 +139,10 @@ export default function HeatmapPage() {
     }
   };
 
+  useEffect(() => {
+    loadAnalyses();
+  }, [filterRepository, filterBranch]);
+
   const filteredItems = useMemo(() => {
     let filtered = allItems;
 
@@ -150,6 +197,38 @@ export default function HeatmapPage() {
                   className="pl-10"
                 />
               </div>
+              {repositories.length > 0 && (
+                <Select value={filterRepository} onValueChange={setFilterRepository}>
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <Database className="mr-2 h-4 w-4" />
+                    <SelectValue placeholder="Repositório" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Repositórios</SelectItem>
+                    {repositories.map((repo) => (
+                      <SelectItem key={repo.id} value={repo.id}>
+                        {repo.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {branches.length > 0 && (
+                <Select value={filterBranch} onValueChange={setFilterBranch}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <GitBranch className="mr-2 h-4 w-4" />
+                    <SelectValue placeholder="Branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Branches</SelectItem>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch} value={branch}>
+                        {branch}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={filterImpact} onValueChange={(v: any) => setFilterImpact(v)}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <Filter className="mr-2 h-4 w-4" />

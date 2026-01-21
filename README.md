@@ -25,9 +25,29 @@ git clone <YOUR_GIT_URL>
 # Instale as dependências
 npm install
 
+# Configure as variáveis de ambiente (opcional)
+# Crie um arquivo .env na raiz do projeto:
+# VITE_GITHUB_CLIENT_ID=seu_client_id_aqui
+
 # Inicie o servidor de desenvolvimento
 npm run dev
 ```
+
+### 🔐 Configuração do Git Integration
+
+Para usar a integração com GitHub/Gitea, você tem duas opções:
+
+**Opção 1: OAuth (Recomendado)**
+1. Crie um OAuth App no GitHub: https://github.com/settings/developers
+2. Configure `VITE_GITHUB_CLIENT_ID` no arquivo `.env`
+3. Reinicie o servidor
+
+**Opção 2: Personal Access Token**
+1. Gere um token em: https://github.com/settings/tokens
+2. Na página de Git Integration, marque "Usar Personal Access Token"
+3. Cole o token (escopos necessários: `repo`, `read:org`)
+
+Veja mais detalhes em [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md)
 
 ## 🏗️ Tecnologias
 

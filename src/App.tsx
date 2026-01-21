@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AnalysisDetails from "./pages/AnalysisDetails";
 import History from "./pages/History";
+import HistoryTimeline from "./pages/HistoryTimeline";
 import FileRiskDetails from "./pages/FileRiskDetails";
 import GitIntegration from "./pages/GitIntegration";
 import VersionCompare from "./pages/VersionCompare";
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/analise" element={<AnalysisDetails />} />
           <Route path="/arquivo" element={<FileRiskDetails />} />
           <Route path="/historico" element={<History />} />
+          <Route path="/timeline" element={<HistoryTimeline />} />
           <Route path="/git" element={<GitIntegration />} />
           <Route path="/comparar" element={<VersionCompare />} />
           <Route path="/projetos" element={<Projects />} />

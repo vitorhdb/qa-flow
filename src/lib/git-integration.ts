@@ -55,6 +55,13 @@ class GitHubProvider implements GitProvider {
   async authenticate(): Promise<string> {
     // OAuth flow - redireciona para GitHub
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID || '';
+    
+    if (!clientId) {
+      throw new Error(
+        'GitHub Client ID não configurado. Configure VITE_GITHUB_CLIENT_ID no arquivo .env ou use um Personal Access Token.'
+      );
+    }
+    
     const redirectUri = `${window.location.origin}/auth/github/callback`;
     const scope = 'repo read:org';
     
@@ -75,6 +82,14 @@ class GitHubProvider implements GitProvider {
       }, 100);
     });
   }
+  
+  /**
+   * Autentica usando Personal Access Token diretamente
+   * Útil quando OAuth não está configurado
+   */
+  authenticateWithToken(token: string): void {
+    this.setToken(token);
+  }
 
   setToken(token: string) {
     this.token = token;
@@ -94,7 +109,15 @@ class GitHubProvider implements GitProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.statusText}`);
+      const errorText = await response.text().catch(() => response.statusText);
+      let errorMessage = `GitHub API error: ${response.statusText}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorMessage;
+      } catch {
+        // Se não conseguir parsear, usa o texto original
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -117,15 +140,21 @@ class GitHubProvider implements GitProvider {
 
   async getBranches(repo: string): Promise<GitBranch[]> {
     const branches = await this.apiRequest(`/repos/${repo}/branches`);
-    return branches.map((branch: any) => ({
-      name: branch.name,
-      commit: {
-        sha: branch.commit.sha,
-        message: branch.commit.commit.message,
-        author: branch.commit.commit.author.name,
-        date: new Date(branch.commit.commit.author.date),
-      },
-    }));
+    return branches.map((branch: any) => {
+      const commit = branch.commit || {};
+      const commitDetails = commit.commit || {};
+      const author = commitDetails.author || {};
+      
+      return {
+        name: branch.name,
+        commit: {
+          sha: commit.sha || '',
+          message: commitDetails.message || 'Sem mensagem',
+          author: author.name || 'Desconhecido',
+          date: author.date ? new Date(author.date) : new Date(),
+        },
+      };
+    });
   }
 
   async getCommits(repo: string, branch: string = 'main'): Promise<GitCommit[]> {
@@ -185,6 +214,13 @@ class GiteaProvider implements GitProvider {
   async authenticate(): Promise<string> {
     // Similar ao GitHub, mas adaptado para Gitea
     const clientId = import.meta.env.VITE_GITEA_CLIENT_ID || '';
+    
+    if (!clientId) {
+      throw new Error(
+        'Gitea Client ID não configurado. Configure VITE_GITEA_CLIENT_ID no arquivo .env ou use um Personal Access Token.'
+      );
+    }
+    
     const redirectUri = `${window.location.origin}/auth/gitea/callback`;
     
     const authUrl = `${this.baseUrl}/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code`;
@@ -201,6 +237,13 @@ class GiteaProvider implements GitProvider {
         }
       }, 100);
     });
+  }
+  
+  /**
+   * Autentica usando Personal Access Token diretamente
+   */
+  authenticateWithToken(token: string): void {
+    this.setToken(token);
   }
 
   setToken(token: string) {
@@ -243,15 +286,20 @@ class GiteaProvider implements GitProvider {
 
   async getBranches(repo: string): Promise<GitBranch[]> {
     const branches = await this.apiRequest(`/repos/${repo}/branches`);
-    return branches.map((branch: any) => ({
-      name: branch.name,
-      commit: {
-        sha: branch.commit.id,
-        message: branch.commit.message,
-        author: branch.commit.author.name,
-        date: new Date(branch.commit.timestamp),
-      },
-    }));
+    return branches.map((branch: any) => {
+      const commit = branch.commit || {};
+      const author = commit.author || {};
+      
+      return {
+        name: branch.name,
+        commit: {
+          sha: commit.id || commit.sha || '',
+          message: commit.message || 'Sem mensagem',
+          author: author.name || 'Desconhecido',
+          date: commit.timestamp ? new Date(commit.timestamp) : (author.date ? new Date(author.date) : new Date()),
+        },
+      };
+    });
   }
 
   async getCommits(repo: string, branch: string = 'main'): Promise<GitCommit[]> {
@@ -307,4 +355,51 @@ export function createGitProvider(provider: 'github' | 'gitea', baseUrl?: string
     return new GiteaProvider(baseUrl);
   }
   throw new Error('Provider inválido ou baseUrl não fornecido para Gitea');
+}
+
+/**
+ * Função de sincronização de repositórios
+ * Busca repositórios do provider e persiste localmente
+ */
+export async function syncRepositories(
+  provider: GitProvider,
+  accountId: string,
+  onProgress?: (progress: { current: number; total: number; repo: string }) => void
+): Promise<GitRepository[]> {
+  const { db } = await import('./database');
+  
+  const repos = await provider.getRepositories();
+  const syncedRepos: GitRepository[] = [];
+  
+  for (let i = 0; i < repos.length; i++) {
+    const repo = repos[i];
+    onProgress?.({ current: i + 1, total: repos.length, repo: repo.fullName });
+    
+    const existingRepo = await db.getAllGitRepositories(accountId).then(repos => 
+      repos.find(r => r.repositoryId === repo.id)
+    );
+    
+    const repoRecord: import('./database').GitRepository = {
+      id: existingRepo?.id || `repo-${Date.now()}-${i}`,
+      accountId,
+      repositoryId: repo.id,
+      name: repo.name,
+      fullName: repo.fullName,
+      description: repo.description,
+      url: repo.url,
+      defaultBranch: repo.defaultBranch,
+      language: repo.language,
+      private: repo.private,
+      provider: repo.provider,
+      syncStatus: 'success',
+      lastSyncAt: new Date(),
+      createdAt: existingRepo?.createdAt || new Date(),
+      updatedAt: new Date(),
+    };
+    
+    await db.saveGitRepository(repoRecord);
+    syncedRepos.push(repoRecord);
+  }
+  
+  return syncedRepos;
 }
