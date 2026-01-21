@@ -14,7 +14,7 @@ export function CodeEditor({ value, onChange, placeholder, className }: CodeEdit
       <Textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder || 'Cole seu código aqui para análise...'}
+        placeholder={placeholder || ''}
         className="code-editor min-h-[400px] resize-none p-4 font-mono text-sm leading-relaxed placeholder:text-muted-foreground/50"
         spellCheck={false}
       />

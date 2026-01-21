@@ -4,12 +4,15 @@ Sistema avançado de análise de qualidade de código com métricas de seguranç
 
 ## 🚀 Funcionalidades
 
-- **Análise de Código**: Suporte para JavaScript, TypeScript, SQL, Delphi/Pascal, Python
+- **Autenticação**: Login com email/senha, GitHub OAuth e Google OAuth
+- **Análise de Código**: Suporte para JavaScript, TypeScript, SQL, Delphi/Pascal, Python, Java, Ruby, Rails, JSON, API, Supabase
+- **IA Integrada**: Análises aprimoradas com OpenAI (GPT-4)
 - **Métricas Avançadas**: Segurança (40%), Qualidade (30%), Robustez (20%), Evolução (10%)
 - **Mapa de Calor de Risco**: Matriz 5x5 Impacto x Probabilidade
 - **Análise de Pasta**: Seleção e análise de múltiplos arquivos
 - **Histórico de Análises**: Armazenamento e consulta de resultados
-- **Exportação**: Relatórios em TXT, HTML e PDF
+- **Exportação**: Relatórios em PDF, HTML, Markdown e TXT
+- **Integração Git**: Sincronização com GitHub/Gitea
 
 ## 📋 Requisitos
 
@@ -27,7 +30,11 @@ npm install
 
 # Configure as variáveis de ambiente (opcional)
 # Crie um arquivo .env na raiz do projeto:
+# VITE_OPENAI_API_KEY=sk-your-openai-api-key-here
 # VITE_GITHUB_CLIENT_ID=seu_client_id_aqui
+# VITE_GITHUB_CLIENT_SECRET=seu_client_secret_aqui
+# VITE_GOOGLE_CLIENT_ID=seu_google_client_id.apps.googleusercontent.com
+# VITE_GOOGLE_CLIENT_SECRET=seu_google_client_secret
 
 # Inicie o servidor de desenvolvimento
 npm run dev

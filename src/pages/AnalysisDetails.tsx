@@ -5,9 +5,11 @@ import { QualityGate } from "@/components/dashboard/QualityGate";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { FindingsList } from "@/components/dashboard/FindingsList";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Shield, Zap, TrendingUp } from "lucide-react";
+import { AlertTriangle, Shield, Zap, TrendingUp, FileDown } from "lucide-react";
 import type { AnalysisResult, Finding } from "@/types/qa";
 import { useMemo, useState } from "react";
+import { exportSingleAnalysis } from "@/lib/export-history";
+import { toast } from "sonner";
 
 interface LocationState {
   analysisResult?: AnalysisResult | null;
@@ -20,10 +22,26 @@ export default function AnalysisDetails() {
   const { analysisResult, initialTab = "risk" } = (state || {}) as LocationState;
 
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [activeTab, setActiveTab] = useState<
     "risk" | "quality" | "security" | "improvements"
   >(initialTab);
+
+  const handleExport = async (format: 'pdf' | 'html' | 'markdown' | 'txt') => {
+    if (!analysisResult) return;
+    
+    try {
+      setIsExporting(true);
+      await exportSingleAnalysis(analysisResult, format, true);
+      toast.success(`Análise exportada em ${format.toUpperCase()} com sucesso!`);
+    } catch (error: any) {
+      console.error('Erro ao exportar:', error);
+      toast.error(`Erro ao exportar: ${error.message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const scores = analysisResult?.scores ?? {
     risk: 0,
@@ -93,9 +111,53 @@ export default function AnalysisDetails() {
             </p>
           </div>
 
-          <Button variant="outline" onClick={() => navigate("/")}>
-            Voltar
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExport('pdf')}
+                disabled={isExporting}
+                title="Exportar PDF"
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExport('html')}
+                disabled={isExporting}
+                title="Exportar HTML"
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                HTML
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExport('markdown')}
+                disabled={isExporting}
+                title="Exportar Markdown"
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                MD
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExport('txt')}
+                disabled={isExporting}
+                title="Exportar TXT"
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                TXT
+              </Button>
+            </div>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Voltar
+            </Button>
+          </div>
         </div>
 
         {/* Resumo / Quality Gate */}

@@ -3,6 +3,19 @@
  * Suporta SQLite (desenvolvimento) e preparado para Supabase/PostgreSQL (produção)
  */
 
+// Importa tipos do sistema de histórico
+import type {
+  Analysis,
+  Finding,
+  AnalysisComparison,
+  FileRiskHistory,
+  ProjectTrend,
+  AnalysisFilter,
+  HeatmapHistoricalData,
+  AnalysisMode,
+  QualityGateStatus,
+} from '@/types/history';
+
 // Mantido para compatibilidade com código existente
 export interface AnalysisRecord {
   id: string;
@@ -35,19 +48,6 @@ export interface Project {
   userId?: string;
   organizationId?: string;
 }
-
-// Importa tipos do sistema de histórico
-import type {
-  Analysis,
-  Finding,
-  AnalysisComparison,
-  FileRiskHistory,
-  ProjectTrend,
-  AnalysisFilter,
-  HeatmapHistoricalData,
-  AnalysisMode,
-  QualityGateStatus,
-} from '@/types/history';
 
 export interface GitAccount {
   id: string;

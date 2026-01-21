@@ -14,6 +14,7 @@ import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { analyzeCode } from '@/lib/analyzer';
+import { analyzeCodeWithAIEnhanced } from '@/lib/analyzer-enhanced';
 import { buildFileRiskMatrixItems } from '@/lib/risk-matrix';
 import { selectFolder, filesFromInput, filesToFileTree, isFileSystemAccessSupported, type FileSystemFile } from '@/lib/file-system';
 import { db } from '@/lib/database';
@@ -99,9 +100,18 @@ export default function Index() {
     // Simulate analysis delay for UX
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    const result = analyzeCode(code);
-    setAnalysisResult(result);
-    setIsAnalyzing(false);
+    setIsAnalyzing(true);
+    try {
+      // Usa análise com IA se disponível, senão usa análise estática
+      const result = await analyzeCodeWithAIEnhanced(code);
+      setAnalysisResult(result);
+    } catch (error) {
+      // Fallback para análise estática se IA falhar
+      const result = analyzeCode(code);
+      setAnalysisResult(result);
+    } finally {
+      setIsAnalyzing(false);
+    }
     
     // Salva no banco de dados
     try {
@@ -331,8 +341,15 @@ export default function Index() {
     const processor = new BatchProcessor<string, FileResult>(
       async (path: string, index: number) => {
         const content = fileContents[path] || '';
-        const result = analyzeCode(content, path);
-        return { path, result };
+        // Usa análise com IA se disponível
+        try {
+          const result = await analyzeCodeWithAIEnhanced(content, path);
+          return { path, result };
+        } catch {
+          // Fallback para análise estática
+          const result = analyzeCode(content, path);
+          return { path, result };
+        }
       },
       {
         batchSize, // Ajusta dinamicamente
@@ -801,19 +818,20 @@ O analisador detecta:
             <div>
               <h3 className="text-sm font-semibold mb-1">Análise por IA</h3>
               <p className="text-xs text-muted-foreground">
-                Ative para análises mais detalhadas usando inteligência artificial
+                A IA está integrada automaticamente em todas as análises. Configure em{' '}
+                <button
+                  onClick={() => navigate('/configuracoes')}
+                  className="text-primary hover:underline"
+                >
+                  Configurações
+                </button>
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Sparkles className={aiEnabled ? 'h-5 w-5 text-primary' : 'h-5 w-5 text-muted-foreground'} />
-              <Label htmlFor="ai-toggle" className="text-sm font-medium cursor-pointer">
-                {aiEnabled ? 'Ativado' : 'Desativado'}
+              <Sparkles className="h-5 w-5 text-primary" />
+              <Label className="text-sm font-medium">
+                Sempre Ativa
               </Label>
-              <Switch
-                id="ai-toggle"
-                checked={aiEnabled}
-                onCheckedChange={setAiEnabled}
-              />
             </div>
           </div>
         </div>

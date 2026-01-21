@@ -35,14 +35,13 @@ export default function FileRiskDetails() {
   const { item } = (state || {}) as LocationState;
 
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [tab, setTab] = useState<"motivos" | "melhorias" | "codigo">("motivos");
+  const [tab, setTab] = useState<"motivos" | "codigo">("motivos");
 
   const data = useMemo(() => {
     if (!item) return null;
     const all = item.analysisResult.findings;
     const motivos = all.filter((f) => f.type !== "improvement");
-    const melhorias = all.filter((f) => f.type === "improvement");
-    return { all, motivos, melhorias };
+    return { all, motivos };
   }, [item]);
 
   if (!item || !data) {
@@ -62,7 +61,8 @@ export default function FileRiskDetails() {
     );
   }
 
-  const code = mockFileContents[item.filename] ?? item.analysisResult.code ?? "";
+  // Obtém o código completo do arquivo analisado
+  const code = item.analysisResult.code ?? mockFileContents[item.filename] ?? "";
 
   return (
     <div className="min-h-screen bg-background">
@@ -95,7 +95,6 @@ export default function FileRiskDetails() {
           <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
             <TabsList className="bg-secondary/50">
               <TabsTrigger value="motivos">Motivos do risco ({data.motivos.length})</TabsTrigger>
-              <TabsTrigger value="melhorias">Melhorias ({data.melhorias.length})</TabsTrigger>
               <TabsTrigger value="codigo">Código</TabsTrigger>
             </TabsList>
 
@@ -106,18 +105,12 @@ export default function FileRiskDetails() {
               <FindingsList findings={data.motivos as Finding[]} />
             </TabsContent>
 
-            <TabsContent value="melhorias" className="mt-4">
-              <p className="mb-3 text-sm text-muted-foreground">
-                Sugestões para reduzir o risco e melhorar o código.
-              </p>
-              <FindingsList findings={data.melhorias as Finding[]} />
-            </TabsContent>
-
             <TabsContent value="codigo" className="mt-4">
-              <p className="mb-3 text-sm text-muted-foreground">
-                Trecho analisado (somente leitura).
-              </p>
-              <CodeEditor value={code} onChange={() => {}} className="pointer-events-none opacity-95" />
+              <CodeEditor 
+                value={code} 
+                onChange={() => {}} 
+                className="pointer-events-none opacity-95"
+              />
             </TabsContent>
           </Tabs>
         </div>

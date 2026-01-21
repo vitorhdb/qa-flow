@@ -1,15 +1,61 @@
 import { Finding, AnalysisResult, Severity } from '@/types/qa';
 
-const securityPatterns = [
-  { pattern: /SELECT\s+.*\+\s*['"]|['"].*\+\s*SELECT/gi, title: 'Risco de SQL Injection', description: 'Concatenação de strings em consulta SQL detectada. Prefira queries parametrizadas.', severity: 'critical' as Severity },
-  { pattern: /DELETE\s+FROM\s+\w+\s*(?:;|$)/gi, title: 'DELETE sem WHERE', description: 'Comando DELETE sem cláusula WHERE pode apagar todos os registros.', severity: 'critical' as Severity },
-  { pattern: /DROP\s+TABLE/gi, title: 'DROP TABLE detectado', description: 'Comando DROP TABLE encontrado. Garanta que seja intencional e protegido.', severity: 'critical' as Severity },
-  { pattern: /TRUNCATE\s+TABLE/gi, title: 'TRUNCATE TABLE detectado', description: 'Comando TRUNCATE TABLE encontrado. Ele remove todos os dados.', severity: 'high' as Severity },
-  { pattern: /eval\s*\(/gi, title: 'Uso de eval detectado', description: 'eval() é perigoso e pode executar código arbitrário. Evite utilizá-lo.', severity: 'critical' as Severity },
-  { pattern: /innerHTML\s*=/gi, title: 'Atribuição a innerHTML', description: 'Atribuição direta a innerHTML pode gerar vulnerabilidades de XSS.', severity: 'high' as Severity },
+// Padrões de segurança universais
+const universalSecurityPatterns = [
   { pattern: /password\s*=\s*['"][^'"]+['"]/gi, title: 'Senha hardcoded', description: 'Senha fixa detectada. Use variáveis de ambiente ou armazenamento seguro.', severity: 'critical' as Severity },
   { pattern: /api[_-]?key\s*=\s*['"][^'"]+['"]/gi, title: 'API key hardcoded', description: 'Chave de API fixa detectada. Use variáveis de ambiente.', severity: 'high' as Severity },
+  { pattern: /secret\s*=\s*['"][^'"]+['"]/gi, title: 'Secret hardcoded', description: 'Secret fixo detectado. Use variáveis de ambiente.', severity: 'critical' as Severity },
+  { pattern: /token\s*=\s*['"][^'"]+['"]/gi, title: 'Token hardcoded', description: 'Token fixo detectado. Use variáveis de ambiente.', severity: 'high' as Severity },
 ];
+
+// Padrões específicos por linguagem
+const languageSecurityPatterns: Record<string, Array<{ pattern: RegExp; title: string; description: string; severity: Severity }>> = {
+  sql: [
+    { pattern: /SELECT\s+.*\+\s*['"]|['"].*\+\s*SELECT/gi, title: 'Risco de SQL Injection', description: 'Concatenação de strings em consulta SQL detectada. Prefira queries parametrizadas.', severity: 'critical' as Severity },
+    { pattern: /DELETE\s+FROM\s+\w+\s*(?:;|$)/gi, title: 'DELETE sem WHERE', description: 'Comando DELETE sem cláusula WHERE pode apagar todos os registros.', severity: 'critical' as Severity },
+    { pattern: /DROP\s+TABLE/gi, title: 'DROP TABLE detectado', description: 'Comando DROP TABLE encontrado. Garanta que seja intencional e protegido.', severity: 'critical' as Severity },
+    { pattern: /TRUNCATE\s+TABLE/gi, title: 'TRUNCATE TABLE detectado', description: 'Comando TRUNCATE TABLE encontrado. Ele remove todos os dados.', severity: 'high' as Severity },
+    { pattern: /EXEC\s*\(|EXECUTE\s*\(/gi, title: 'EXEC dinâmico', description: 'Execução dinâmica de SQL detectada. Risco de SQL Injection.', severity: 'critical' as Severity },
+  ],
+  javascript: [
+    { pattern: /eval\s*\(/gi, title: 'Uso de eval detectado', description: 'eval() é perigoso e pode executar código arbitrário. Evite utilizá-lo.', severity: 'critical' as Severity },
+    { pattern: /innerHTML\s*=/gi, title: 'Atribuição a innerHTML', description: 'Atribuição direta a innerHTML pode gerar vulnerabilidades de XSS.', severity: 'high' as Severity },
+    { pattern: /dangerouslySetInnerHTML/gi, title: 'dangerouslySetInnerHTML', description: 'Uso de dangerouslySetInnerHTML pode causar XSS. Valide e sanitize dados.', severity: 'high' as Severity },
+    { pattern: /document\.write\s*\(/gi, title: 'document.write', description: 'document.write() pode causar XSS. Use métodos seguros de manipulação do DOM.', severity: 'medium' as Severity },
+    { pattern: /new\s+Function\s*\(/gi, title: 'new Function()', description: 'new Function() pode executar código arbitrário. Evite uso dinâmico.', severity: 'high' as Severity },
+  ],
+  java: [
+    { pattern: /Runtime\.getRuntime\(\)\.exec\s*\(/gi, title: 'Execução de comando do sistema', description: 'Execução de comandos do sistema detectada. Valide e sanitize entrada.', severity: 'critical' as Severity },
+    { pattern: /ProcessBuilder\s*\(/gi, title: 'ProcessBuilder', description: 'ProcessBuilder pode executar comandos. Valide entrada cuidadosamente.', severity: 'high' as Severity },
+    { pattern: /Statement\s+\w+\s*=\s*\w+\.createStatement\s*\(/gi, title: 'Statement sem PreparedStatement', description: 'Use PreparedStatement em vez de Statement para prevenir SQL Injection.', severity: 'critical' as Severity },
+    { pattern: /\.getParameter\s*\(/gi, title: 'Parâmetro HTTP sem validação', description: 'Parâmetros HTTP devem ser validados antes do uso.', severity: 'high' as Severity },
+  ],
+  delphi: [
+    { pattern: /ShellExecute|WinExec|CreateProcess/gi, title: 'Execução de processo externo', description: 'Execução de processos externos detectada. Valide entrada.', severity: 'high' as Severity },
+    { pattern: /Format\s*\(.*%.*\)/gi, title: 'Format com formato dinâmico', description: 'Format com formato dinâmico pode causar problemas. Valide formato.', severity: 'medium' as Severity },
+    { pattern: /StrToInt\s*\(|StrToFloat\s*\(/gi, title: 'Conversão sem tratamento de erro', description: 'Conversão de string sem tratamento de erro pode causar exceções.', severity: 'medium' as Severity },
+  ],
+  firemonkey: [
+    { pattern: /ShellExecute|WinExec|CreateProcess/gi, title: 'Execução de processo externo', description: 'Execução de processos externos detectada. Valide entrada.', severity: 'high' as Severity },
+  ],
+  ruby: [
+    { pattern: /eval\s*\(|instance_eval|class_eval/gi, title: 'Uso de eval', description: 'eval() pode executar código arbitrário. Evite uso dinâmico.', severity: 'critical' as Severity },
+    { pattern: /system\s*\(|`.*`|%x\[/gi, title: 'Execução de comando do sistema', description: 'Execução de comandos do sistema detectada. Valide entrada.', severity: 'critical' as Severity },
+    { pattern: /\.where\s*\(.*\+.*\)/gi, title: 'SQL Injection potencial', description: 'Concatenação em query ActiveRecord pode causar SQL Injection.', severity: 'critical' as Severity },
+  ],
+  json: [
+    { pattern: /"password"\s*:\s*"[^"]+"/gi, title: 'Senha em JSON', description: 'Senha encontrada em JSON. Não armazene senhas em JSON.', severity: 'critical' as Severity },
+    { pattern: /"token"\s*:\s*"[^"]+"/gi, title: 'Token em JSON', description: 'Token encontrado em JSON. Use variáveis de ambiente.', severity: 'high' as Severity },
+  ],
+  api: [
+    { pattern: /\/\*.*\*\/|\/\/.*password|\/\/.*secret/gi, title: 'Credenciais em comentários', description: 'Credenciais não devem estar em comentários.', severity: 'high' as Severity },
+  ],
+  supabase: [
+    { pattern: /\.rpc\s*\([^,]+,\s*\{[^}]*\}/gi, title: 'RPC sem validação', description: 'Chamadas RPC devem validar entrada.', severity: 'high' as Severity },
+  ],
+};
+
+const securityPatterns = [...universalSecurityPatterns];
 
 const qualityPatterns = [
   { pattern: /console\.(log|debug|info)\s*\(/gi, title: 'Uso de console', description: 'Comandos de console devem ser removidos em código de produção.', severity: 'low' as Severity },
@@ -27,11 +73,45 @@ const improvementPatterns = [
   { pattern: /function\s*\([^)]*\)\s*\{[^}]{500,}\}/gi, title: 'Função longa', description: 'A função está extensa. Considere dividi-la em funções menores.', severity: 'medium' as Severity },
 ];
 
-function detectLanguage(code: string): string {
-  if (/procedure|function|begin|end;|TForm|TButton/i.test(code)) return 'delphi';
-  if (/SELECT|INSERT|UPDATE|DELETE|CREATE TABLE/i.test(code)) return 'sql';
-  if (/import\s+.*from|export\s+(default|const|function)|const\s+\w+\s*=|=>/i.test(code)) return 'javascript';
-  if (/def\s+\w+|import\s+\w+|print\s*\(/i.test(code)) return 'python';
+function detectLanguage(code: string, filename?: string): string {
+  // Detecta por extensão do arquivo primeiro
+  if (filename) {
+    const ext = filename.toLowerCase().split('.').pop();
+    const extMap: Record<string, string> = {
+      'js': 'javascript',
+      'jsx': 'javascript',
+      'ts': 'javascript',
+      'tsx': 'javascript',
+      'java': 'java',
+      'sql': 'sql',
+      'pas': 'delphi',
+      'dpr': 'delphi',
+      'dfm': 'delphi',
+      'fmx': 'firemonkey',
+      'rb': 'ruby',
+      'rake': 'ruby',
+      'json': 'json',
+      'py': 'python',
+      'api': 'api',
+    };
+    if (ext && extMap[ext]) return extMap[ext];
+  }
+
+  // Detecta por padrões no código
+  if (/procedure|function|begin|end;|TForm|TButton|TComponent|uses\s+\w+/i.test(code)) {
+    if (/TForm|TButton|TComponent|VCL/i.test(code)) return 'delphi';
+    if (/TForm|TButton|TComponent|FMX|FireMonkey/i.test(code)) return 'firemonkey';
+    return 'delphi';
+  }
+  if (/SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|ALTER TABLE|DROP TABLE|TRUNCATE/i.test(code)) return 'sql';
+  if (/import\s+.*from|export\s+(default|const|function)|const\s+\w+\s*=|=>|require\(|module\.exports/i.test(code)) return 'javascript';
+  if (/public\s+class|private\s+\w+|@Override|@Entity|@Service|import\s+java\./i.test(code)) return 'java';
+  if (/def\s+\w+|import\s+\w+|print\s*\(|class\s+\w+\(|@app\.route/i.test(code)) return 'python';
+  if (/class\s+\w+|def\s+\w+|require\s+['"]|module\s+\w+|ActiveRecord/i.test(code)) return 'ruby';
+  if (/^\s*\{|^\s*\[|"[\w]+"\s*:\s*|true|false|null/i.test(code) && /^[\s\n]*[\{\[]/.test(code.trim())) return 'json';
+    if (/GET|POST|PUT|DELETE|@RequestMapping|@GetMapping|@PostMapping|endpoint|\/api\//i.test(code)) return 'api';
+  if (/supabase\.|createClient|from\(|\.select\(|\.insert\(|\.update\(/i.test(code)) return 'supabase';
+  
   return 'unknown';
 }
 
@@ -96,9 +176,13 @@ function calculateScores(findings: Finding[]): AnalysisResult['scores'] {
 }
 
 export function analyzeCode(code: string, filename?: string): AnalysisResult {
-  const language = detectLanguage(code);
+  const language = detectLanguage(code, filename);
   
-  const securityFindings = findPatternMatches(code, securityPatterns, 'security');
+  // Obtém padrões específicos da linguagem
+  const langSecurityPatterns = languageSecurityPatterns[language] || [];
+  const allSecurityPatterns = [...securityPatterns, ...langSecurityPatterns];
+  
+  const securityFindings = findPatternMatches(code, allSecurityPatterns, 'security');
   const qualityFindings = findPatternMatches(code, qualityPatterns, 'quality');
   const improvementFindings = findPatternMatches(code, improvementPatterns, 'improvement');
   

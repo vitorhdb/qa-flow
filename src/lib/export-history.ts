@@ -16,7 +16,7 @@ export interface ExportOptions {
 /**
  * Exporta análises em formato TXT
  */
-export function exportToTXT(analyses: Analysis[], includeFindings: boolean = true): string {
+export async function exportToTXT(analyses: Analysis[], includeFindings: boolean = true): Promise<string> {
   let content = '═══════════════════════════════════════════════════════════\n';
   content += '                    QA FLOW! - RELATÓRIO DE ANÁLISES                    \n';
   content += '═══════════════════════════════════════════════════════════\n\n';
@@ -29,22 +29,28 @@ export function exportToTXT(analyses: Analysis[], includeFindings: boolean = tru
     content += `${'─'.repeat(60)}\n\n`;
     content += `ID: ${analysis.id}\n`;
     content += `Data/Hora: ${new Date(analysis.timestamp).toLocaleString('pt-BR')}\n`;
-    content += `Modo: ${analysis.mode}\n`;
+    const modeMap: Record<string, string> = {
+      manual: 'Manual',
+      folder: 'Pasta',
+      repo: 'Repositório',
+      ci: 'CI/CD',
+    };
+    content += `Modo: ${modeMap[analysis.mode] || analysis.mode}\n`;
     if (analysis.branch) {
       content += `Branch: ${analysis.branch}\n`;
     }
     if (analysis.commitHash) {
       content += `Commit: ${analysis.commitHash}\n`;
     }
-    content += `Quality Gate: ${analysis.qualityGate}\n\n`;
+    content += `Portão de Qualidade: ${analysis.qualityGate === 'PASS' ? 'APROVADO' : 'REPROVADO'}\n\n`;
     
-    content += 'SCORES:\n';
+    content += 'PONTUAÇÕES:\n';
     content += `  Risco: ${analysis.riskScore}%\n`;
     content += `  Qualidade: ${analysis.qualityScore}%\n`;
     content += `  Segurança: ${analysis.securityScore}%\n`;
     content += `  Melhorias: ${analysis.improvementScore}%\n\n`;
     
-    content += 'FINDINGS:\n';
+    content += 'ACHADOS:\n';
     content += `  Total: ${analysis.totalFindings || 0}\n`;
     content += `  Críticos: ${analysis.criticalFindings || 0}\n`;
     content += `  Altos: ${analysis.highFindings || 0}\n`;
@@ -52,13 +58,32 @@ export function exportToTXT(analyses: Analysis[], includeFindings: boolean = tru
     content += `  Baixos: ${analysis.lowFindings || 0}\n\n`;
     
     if (includeFindings && analysis.totalFindings && analysis.totalFindings > 0) {
-      // Busca findings detalhados
-      const findings = await db.getFindingsByAnalysis(analysis.id);
+      // Busca findings detalhados do banco ou usa os fornecidos
+      let findings: Finding[] = [];
+      if (analysis.metadata?.findings) {
+        // Usa findings fornecidos diretamente
+        findings = analysis.metadata.findings;
+      } else {
+        // Busca do banco
+        findings = await db.getFindingsByAnalysis(analysis.id);
+      }
+      
       if (findings.length > 0) {
-        content += 'DETALHES DOS FINDINGS:\n';
+        content += 'DETALHES DOS ACHADOS:\n';
         findings.forEach((finding, idx) => {
-          content += `\n  ${idx + 1}. [${finding.severity.toUpperCase()}] ${finding.type}\n`;
-          content += `     Arquivo: ${finding.file}`;
+          const typeMap: Record<string, string> = {
+            security: 'Segurança',
+            quality: 'Qualidade',
+            improvement: 'Melhoria',
+          };
+          const severityMap: Record<string, string> = {
+            critical: 'CRÍTICO',
+            high: 'ALTO',
+            medium: 'MÉDIO',
+            low: 'BAIXO',
+          };
+          content += `\n  ${idx + 1}. [${severityMap[finding.severity] || finding.severity.toUpperCase()}] ${typeMap[finding.type] || finding.type}\n`;
+          content += `     Arquivo: ${finding.file || analysis.metadata?.filename || 'N/A'}`;
           if (finding.line) {
             content += `:${finding.line}`;
           }
@@ -88,16 +113,22 @@ export async function exportToMarkdown(analyses: Analysis[], includeFindings: bo
     content += `## Análise #${index + 1}\n\n`;
     content += `**ID:** \`${analysis.id}\`\n`;
     content += `**Data/Hora:** ${new Date(analysis.timestamp).toLocaleString('pt-BR')}\n`;
-    content += `**Modo:** ${analysis.mode}\n`;
+    const modeMap: Record<string, string> = {
+      manual: 'Manual',
+      folder: 'Pasta',
+      repo: 'Repositório',
+      ci: 'CI/CD',
+    };
+    content += `**Modo:** ${modeMap[analysis.mode] || analysis.mode}\n`;
     if (analysis.branch) {
       content += `**Branch:** \`${analysis.branch}\`\n`;
     }
     if (analysis.commitHash) {
       content += `**Commit:** \`${analysis.commitHash}\`\n`;
     }
-    content += `**Quality Gate:** ${analysis.qualityGate === 'PASS' ? '✅ PASS' : '❌ FAIL'}\n\n`;
+    content += `**Portão de Qualidade:** ${analysis.qualityGate === 'PASS' ? '✅ APROVADO' : '❌ REPROVADO'}\n\n`;
     
-    content += '### Scores\n\n';
+    content += '### Pontuações\n\n';
     content += `| Métrica | Valor |\n`;
     content += `|---------|-------|\n`;
     content += `| Risco | ${analysis.riskScore}% |\n`;
@@ -105,7 +136,7 @@ export async function exportToMarkdown(analyses: Analysis[], includeFindings: bo
     content += `| Segurança | ${analysis.securityScore}% |\n`;
     content += `| Melhorias | ${analysis.improvementScore}% |\n\n`;
     
-    content += '### Findings\n\n';
+    content += '### Achados\n\n';
     content += `| Severidade | Quantidade |\n`;
     content += `|------------|------------|\n`;
     content += `| 🔴 Críticos | ${analysis.criticalFindings || 0} |\n`;
@@ -115,8 +146,13 @@ export async function exportToMarkdown(analyses: Analysis[], includeFindings: bo
     content += `| **Total** | **${analysis.totalFindings || 0}** |\n\n`;
     
     if (includeFindings && analysis.totalFindings && analysis.totalFindings > 0) {
-      content += '### Detalhes dos Findings\n\n';
-      const findings = await db.getFindingsByAnalysis(analysis.id);
+      content += '### Detalhes dos Achados\n\n';
+      let findings: Finding[] = [];
+      if (analysis.metadata?.findings) {
+        findings = analysis.metadata.findings;
+      } else {
+        findings = await db.getFindingsByAnalysis(analysis.id);
+      }
       findings.forEach((finding, idx) => {
         const severityEmoji = {
           critical: '🔴',
@@ -125,7 +161,19 @@ export async function exportToMarkdown(analyses: Analysis[], includeFindings: bo
           low: '🟢',
         }[finding.severity];
         
-        content += `#### ${severityEmoji} ${finding.severity.toUpperCase()} - ${finding.type}\n\n`;
+        const typeMap: Record<string, string> = {
+          security: 'Segurança',
+          quality: 'Qualidade',
+          improvement: 'Melhoria',
+        };
+        const severityMap: Record<string, string> = {
+          critical: 'CRÍTICO',
+          high: 'ALTO',
+          medium: 'MÉDIO',
+          low: 'BAIXO',
+        };
+        
+        content += `#### ${severityEmoji} ${severityMap[finding.severity] || finding.severity.toUpperCase()} - ${typeMap[finding.type] || finding.type}\n\n`;
         content += `**Arquivo:** \`${finding.file}${finding.line ? `:${finding.line}` : ''}\`\n\n`;
         content += `${finding.description}\n\n`;
       });
@@ -187,7 +235,15 @@ export async function exportToHTML(analyses: Analysis[], includeFindings: boolea
       <div class="meta">
         <strong>ID:</strong> <code>${analysis.id}</code><br>
         <strong>Data/Hora:</strong> ${new Date(analysis.timestamp).toLocaleString('pt-BR')}<br>
-        <strong>Modo:</strong> ${analysis.mode}`;
+        <strong>Modo:</strong> ${(() => {
+          const modeMap: Record<string, string> = {
+            manual: 'Manual',
+            folder: 'Pasta',
+            repo: 'Repositório',
+            ci: 'CI/CD',
+          };
+          return modeMap[analysis.mode] || analysis.mode;
+        })()}`;
     
     if (analysis.branch) {
       content += `<br><strong>Branch:</strong> <code>${analysis.branch}</code>`;
@@ -196,10 +252,10 @@ export async function exportToHTML(analyses: Analysis[], includeFindings: boolea
       content += `<br><strong>Commit:</strong> <code>${analysis.commitHash}</code>`;
     }
     
-    content += `<br><strong>Quality Gate:</strong> <span class="badge ${analysis.qualityGate === 'PASS' ? 'badge-pass' : 'badge-fail'}">${analysis.qualityGate}</span>
+    content += `<br><strong>Portão de Qualidade:</strong> <span class="badge ${analysis.qualityGate === 'PASS' ? 'badge-pass' : 'badge-fail'}">${analysis.qualityGate === 'PASS' ? 'APROVADO' : 'REPROVADO'}</span>
       </div>
       
-      <h3>Scores</h3>
+      <h3>Pontuações</h3>
       <div class="scores">
         <div class="score-card">
           <div class="score-value">${analysis.riskScore}%</div>
@@ -219,7 +275,7 @@ export async function exportToHTML(analyses: Analysis[], includeFindings: boolea
         </div>
       </div>
       
-      <h3>Findings</h3>
+      <h3>Achados</h3>
       <div class="findings-grid">
         <div class="finding-card critical">
           <div style="font-size: 20px; font-weight: bold;">${analysis.criticalFindings || 0}</div>
@@ -239,7 +295,7 @@ export async function exportToHTML(analyses: Analysis[], includeFindings: boolea
         </div>
       </div>
     </div>`;
-  });
+  }
 
   content += `
   </div>
@@ -268,6 +324,66 @@ export async function exportToPDF(analyses: Analysis[], includeFindings: boolean
       }, 500);
     };
   }
+}
+
+/**
+ * Converte AnalysisResult para formato Analysis (histórico)
+ */
+function convertAnalysisResultToAnalysis(result: any): Analysis {
+  const criticalCount = result.findings?.filter((f: any) => f.severity === 'critical').length || 0;
+  const highCount = result.findings?.filter((f: any) => f.severity === 'high').length || 0;
+  const mediumCount = result.findings?.filter((f: any) => f.severity === 'medium').length || 0;
+  const lowCount = result.findings?.filter((f: any) => f.severity === 'low').length || 0;
+
+  // Converte findings para formato Finding do histórico
+  const findings: Finding[] = (result.findings || []).map((f: any) => ({
+    id: f.id || `finding-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    analysisId: result.id || `analysis-${Date.now()}`,
+    type: f.type || 'quality',
+    severity: f.severity || 'low',
+    file: result.filename || 'N/A',
+    line: f.line,
+    description: f.description || f.title || '',
+    fingerprint: f.fingerprint || '',
+    code: f.code,
+  }));
+
+  return {
+    id: result.id || `analysis-${Date.now()}`,
+    projectId: result.projectId || 'manual',
+    timestamp: result.timestamp instanceof Date ? result.timestamp : new Date(result.timestamp || Date.now()),
+    branch: result.branch,
+    commitHash: result.commitHash,
+    mode: result.mode || 'manual',
+    riskScore: result.scores?.risk || 0,
+    qualityScore: result.scores?.quality || 0,
+    securityScore: result.scores?.security || 0,
+    improvementScore: result.scores?.improvements || 0,
+    qualityGate: result.passed ? 'PASS' : 'FAIL',
+    fileCount: 1,
+    totalFindings: result.findings?.length || 0,
+    criticalFindings: criticalCount,
+    highFindings: highCount,
+    mediumFindings: mediumCount,
+    lowFindings: lowCount,
+    metadata: {
+      filename: result.filename,
+      language: result.language,
+      findings: findings, // Inclui findings diretamente
+    },
+  };
+}
+
+/**
+ * Exporta uma única análise
+ */
+export async function exportSingleAnalysis(
+  analysisResult: any,
+  format: 'pdf' | 'html' | 'markdown' | 'txt',
+  includeFindings: boolean = true
+): Promise<void> {
+  const analysis = convertAnalysisResultToAnalysis(analysisResult);
+  await exportAnalyses([analysis], format, includeFindings);
 }
 
 /**
