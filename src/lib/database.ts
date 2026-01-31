@@ -16,6 +16,14 @@ import type {
   QualityGateStatus,
 } from '@/types/history';
 
+// Resposta acionável da IA (resumo, top 3, o que fazer agora, o que pode esperar)
+export interface ActionableRecord {
+  resumoRapido: string;
+  top3Problemas: Array<{ problema: string; impactoReal: string; acaoRecomendada: string; severity?: string }>;
+  oQueFazerAgora: string[];
+  oQuePodeEsperar: string[];
+}
+
 // Mantido para compatibilidade com código existente
 export interface AnalysisRecord {
   id: string;
@@ -35,6 +43,8 @@ export interface AnalysisRecord {
   commitHash?: string;
   branch?: string;
   metadata?: Record<string, any>;
+  code?: string;
+  actionable?: ActionableRecord;
 }
 
 // Nova interface de Project conforme especificação

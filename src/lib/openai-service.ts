@@ -1,6 +1,7 @@
 /**
  * Serviço de Integração com OpenAI
  * Centraliza todas as interações com a API da OpenAI
+ * Regra: a IA nunca descobre problemas — ela age sobre problemas já detectados.
  */
 
 export interface OpenAIConfig {
@@ -10,11 +11,41 @@ export interface OpenAIConfig {
   maxTokens?: number;
 }
 
+/** Tipo de sistema para contextualizar a IA (menos genérico = melhor resposta) */
+export type SystemType =
+  | 'sistema-legado'
+  | 'backend-critico'
+  | 'sql-heavy'
+  | 'delphi-monolitico'
+  | 'api-publica'
+  | 'generico';
+
+/** Metadados da análise para a IA (contexto = resposta menos genérica) */
+export interface AnalysisMetadata {
+  language: string;
+  riskScore: number;
+  qualityScore?: number;
+  securityScore?: number;
+  systemType?: SystemType;
+  isLegacy?: boolean;
+}
+
+/** Mapa fixo severidade → o que a IA deve recomendar (evita "tudo é importante") */
+export const SEVERITY_ACTION_MAP: Record<string, string> = {
+  critical: 'Ação imediata',
+  high: 'Corrigir no próximo ciclo',
+  medium: 'Planejar',
+  low: 'Monitorar',
+};
+
 export interface CodeAnalysisRequest {
   code: string;
   language: string;
   filename?: string;
   context?: string;
+  /** Achados já detectados pelo sistema — a IA só orienta, não descobre */
+  qaFindings?: Array<{ severity: string; title: string; description?: string; line?: number }>;
+  metadata?: AnalysisMetadata;
 }
 
 export interface CodeImprovement {
@@ -29,6 +60,19 @@ export interface CodeImprovement {
   impact: string;
 }
 
+/** Resposta estruturada acionável (anti-enrolação) */
+export interface ActionableResponse {
+  resumoRapido: string;
+  top3Problemas: Array<{
+    problema: string;
+    impactoReal: string;
+    acaoRecomendada: string;
+    severity?: string;
+  }>;
+  oQueFazerAgora: string[];
+  oQuePodeEsperar: string[];
+}
+
 export interface AIAnalysisResult {
   improvements: CodeImprovement[];
   summary: string;
@@ -41,6 +85,8 @@ export interface AIAnalysisResult {
     medium: number;
     low: number;
   };
+  /** Resposta no formato fixo para QA (resumo, top 3, ações, o que pode esperar) */
+  actionable?: ActionableResponse;
 }
 
 /**
@@ -76,8 +122,13 @@ export function saveOpenAIConfig(config: OpenAIConfig): void {
   localStorage.setItem('openai_config', JSON.stringify(config));
 }
 
+/** Limite máximo de linhas na resposta da IA (prolixo = ruim para QA) */
+const MAX_RESPONSE_LINES = 20;
+const MAX_TOKENS_ORIENTATION = 1800;
+
 /**
- * Analisa código usando OpenAI com foco em QA crítico
+ * Analisa código usando OpenAI: a IA NUNCA descobre problemas, só orienta sobre achados já detectados.
+ * Resposta acionável: o que está errado, por que importa, o que fazer agora, o que pode esperar.
  */
 export async function analyzeCodeWithAI(
   request: CodeAnalysisRequest,
@@ -88,70 +139,75 @@ export async function analyzeCodeWithAI(
     throw new Error('OpenAI API key não configurada. Configure em Configurações.');
   }
 
+  const findings = request.qaFindings ?? qaFindings ?? [];
+  const hasFindings = Array.isArray(findings) && findings.length > 0;
+  const meta = request.metadata;
+
   const languageContext = getLanguageContext(request.language);
-  const qaContext = qaFindings && qaFindings.length > 0 
-    ? `\n\nAnálise QA Crítica Existente:\n${qaFindings.map(f => `- [${f.severity}] ${f.title}: ${f.description}`).join('\n')}`
-    : '';
+  const systemTypeContext = meta ? getSystemTypeContext(meta.systemType, meta.isLegacy) : '';
+  const severityMapText = Object.entries(SEVERITY_ACTION_MAP)
+    .map(([s, a]) => `${s}: ${a}`)
+    .join('; ');
 
-  const prompt = `Você é um especialista sênior em análise de código, segurança e qualidade de software.
+  const systemPrompt = `Você é um QA sênior. Regras obrigatórias:
+- NUNCA descubra ou invente problemas. Você só age sobre os achados que já foram listados.
+- Para cada problema: diga o que está errado, por que importa, o que fazer agora (ação concreta).
+- Respeite o mapa de severidade: ${severityMapText}.
+- Use linguagem simples e direta. Sem enrolação. Resposta em no máximo ${MAX_RESPONSE_LINES} linhas de conteúdo.
+- Responda APENAS em JSON válido, no formato exato solicitado.`;
 
-Analise o seguinte código ${request.language.toUpperCase()}${request.filename ? ` do arquivo ${request.filename}` : ''}:
+  let userPrompt: string;
 
-\`\`\`${request.language}
-${request.code}
-\`\`\`
+  if (hasFindings) {
+    const findingsText = findings
+      .slice(0, 30)
+      .map((f: any) => `- [${f.severity}] ${f.title}${f.description ? `: ${String(f.description).slice(0, 200)}` : ''}`)
+      .join('\n');
+    const codeSnippet = request.code.length > 2500 ? request.code.slice(0, 2500) + '\n// ... (truncado)' : request.code;
+
+    userPrompt = `Com base no relatório abaixo, NÃO repita o relatório. Foque apenas nos 3 problemas mais críticos.
+Para cada um: impacto real (por que isso importa) e ação concreta (o que fazer agora).
+${meta ? `Contexto: linguagem ${request.language}, score de risco ${meta.riskScore}${meta.systemType ? `, tipo ${meta.systemType}` : ''}${meta.isLegacy ? ', sistema legado' : ''}.` : ''}
+
+Achados já detectados pelo sistema:
+${findingsText}
 
 ${languageContext}
+${systemTypeContext}
 
-${qaContext}
+Código (referência):
+\`\`\`
+${codeSnippet}
+\`\`\`
 
-${qaFindings && qaFindings.length > 0 
-  ? 'IMPORTANTE: Consolide suas análises com os findings críticos do QA acima. Priorize problemas de segurança e qualidade crítica.'
-  : ''}
-
-Forneça uma análise completa focada em:
-1. Segurança: vulnerabilidades, riscos de segurança, práticas inseguras
-2. Qualidade: code smells, complexidade, manutenibilidade
-3. Performance: otimizações possíveis, gargalos
-4. Boas práticas: padrões da linguagem, convenções
-
-Para cada problema encontrado, forneça:
-- Tipo (security/quality/performance/maintainability/best-practice)
-- Severidade (critical/high/medium/low)
-- Título claro
-- Descrição detalhada
-- Código atual (se aplicável)
-- Código sugerido (se aplicável)
-- Linha aproximada
-- Explicação técnica
-- Impacto no sistema
-
-Responda APENAS em JSON válido no seguinte formato:
+Retorne JSON válido neste formato exato:
 {
+  "summary": "Resumo em no máximo 2 frases. Situação geral.",
+  "actionable": {
+    "resumoRapido": "Mesmo resumo em 2 frases.",
+    "top3Problemas": [
+      { "problema": "título do problema", "impactoReal": "por que importa", "acaoRecomendada": "ação concreta", "severity": "critical" },
+      { "problema": "...", "impactoReal": "...", "acaoRecomendada": "...", "severity": "high" },
+      { "problema": "...", "impactoReal": "...", "acaoRecomendada": "...", "severity": "..." }
+    ],
+    "oQueFazerAgora": ["Passo 1 concretico", "Passo 2"],
+    "oQuePodeEsperar": ["Item de baixa urgência 1", "Item 2"]
+  },
   "improvements": [
-    {
-      "type": "security",
-      "severity": "critical",
-      "title": "SQL Injection Vulnerability",
-      "description": "Descrição detalhada",
-      "currentCode": "código atual (opcional)",
-      "suggestedCode": "código sugerido (opcional)",
-      "line": 42,
-      "explanation": "Explicação técnica",
-      "impact": "Impacto no sistema"
-    }
+    { "type": "security ou quality", "severity": "critical", "title": "título", "description": "breve", "explanation": "impacto real", "impact": "ação recomendada", "line": null }
   ],
-  "summary": "Resumo geral da análise",
-  "riskScore": 75,
-  "qualityScore": 60,
-  "recommendations": ["Recomendação 1", "Recomendação 2"],
-  "consolidatedFindings": {
-    "critical": 2,
-    "high": 5,
-    "medium": 8,
-    "low": 3
+  "riskScore": ${meta?.riskScore ?? 50},
+  "qualityScore": ${meta?.qualityScore ?? 50},
+  "recommendations": ["Máximo 3 recomendações curtas"],
+  "consolidatedFindings": { "critical": 0, "high": 0, "medium": 0, "low": 0 }
+}
+Preencha consolidatedFindings com a contagem real por severidade dos achados listados. improvements: apenas os 3 mais críticos, com explanation = impacto real e impact = ação recomendada.`;
+  } else {
+    // Sem achados: só síntese em 2 frases, sem inventar problemas
+    userPrompt = `Código ${request.language}${request.filename ? ` (${request.filename})` : ''}. Nenhum achado crítico foi detectado pelo sistema.
+Gere apenas um resumo em 2 frases sobre o estado geral do código. Não invente problemas.
+Retorne JSON: { "summary": "2 frases", "improvements": [], "riskScore": ${meta?.riskScore ?? 50}, "qualityScore": ${meta?.qualityScore ?? 50}, "recommendations": [], "consolidatedFindings": { "critical": 0, "high": 0, "medium": 0, "low": 0 } }`;
   }
-}`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -163,17 +219,11 @@ Responda APENAS em JSON válido no seguinte formato:
       body: JSON.stringify({
         model: config.model || 'gpt-4-turbo-preview',
         messages: [
-          {
-            role: 'system',
-            content: 'Você é um especialista em análise de código, segurança e qualidade. Sempre retorne JSON válido.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
         ],
-        temperature: config.temperature || 0.3,
-        max_tokens: config.maxTokens || 4000,
+        temperature: config.temperature ?? 0.2,
+        max_tokens: hasFindings ? Math.min(MAX_TOKENS_ORIENTATION, config.maxTokens || 4000) : 400,
         response_format: { type: 'json_object' },
       }),
     });
@@ -185,88 +235,118 @@ Responda APENAS em JSON válido no seguinte formato:
 
     const data = await response.json();
     const content = data.choices[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error('Resposta vazia da OpenAI');
     }
 
-    // Tenta parsear JSON
     let result: AIAnalysisResult;
     try {
       result = JSON.parse(content);
-    } catch (parseError) {
-      // Se falhar, tenta extrair JSON do texto
+    } catch {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        result = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('Resposta da OpenAI não contém JSON válido');
-      }
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+      else throw new Error('Resposta da OpenAI não contém JSON válido');
     }
 
-    // Valida e normaliza resultado
-    return normalizeAIAnalysisResult(result);
+    return normalizeAIAnalysisResult(result, meta);
   } catch (error: any) {
     console.error('Erro ao analisar código com OpenAI:', error);
     throw new Error(`Erro na análise por IA: ${error.message}`);
   }
 }
 
+/** Limite de linhas para relatório executivo (menos é mais) */
+const MAX_REPORT_LINES = 25;
+const MAX_TOKENS_REPORT = 1200;
+
 /**
- * Gera relatório consolidado usando IA
+ * Gera relatório consolidado usando IA em duas fases:
+ * Fase 1 — Síntese: até 5 achados relevantes.
+ * Fase 2 — Orientação: para os 3 mais críticos, ações práticas.
+ * Formato fixo: RESUMO RÁPIDO, TOP 3 PROBLEMAS, O QUE FAZER AGORA, O QUE PODE ESPERAR.
  */
 export async function generateReportWithAI(
   analyses: any[],
-  projectName?: string
+  projectName?: string,
+  options?: { systemType?: SystemType; isLegacy?: boolean }
 ): Promise<string> {
   const config = getOpenAIConfig();
   if (!config || !config.apiKey) {
     throw new Error('OpenAI API key não configurada');
   }
 
-  const prompt = `Gere um relatório executivo consolidado de análise de código para ${projectName || 'o projeto'}.
+  const allFindings = analyses.flatMap((a) => (a.findings || []).map((f: any) => ({ ...f, file: a.filename })));
+  const findingsSummary = allFindings
+    .slice(0, 40)
+    .map((f: any) => `- [${f.severity}] ${f.title} (${f.file || 'N/A'})`)
+    .join('\n');
+  const metrics = analyses.reduce(
+    (acc, a) => ({
+      risk: acc.risk + (a.scores?.risk ?? 0),
+      quality: acc.quality + (a.scores?.quality ?? 0),
+      security: acc.security + (a.scores?.security ?? 0),
+      count: acc.count + 1,
+    }),
+    { risk: 0, quality: 0, security: 0, count: 0 }
+  );
+  const avgRisk = metrics.count ? Math.round(metrics.risk / metrics.count) : 0;
+  const systemTypeContext = options?.systemType
+    ? getSystemTypeContext(options.systemType, options.isLegacy)
+    : '';
 
-Análises realizadas:
-${analyses.map((a, i) => `
-Análise ${i + 1}:
-- Arquivo: ${a.filename || 'N/A'}
-- Linguagem: ${a.language || 'N/A'}
-- Risco: ${a.scores?.risk || 0}%
-- Qualidade: ${a.scores?.quality || 0}%
-- Segurança: ${a.scores?.security || 0}%
-- Findings: ${a.findings?.length || 0}
-`).join('\n')}
+  const systemPrompt = `Você é um QA sênior. Regras:
+- NÃO repita o relatório. Foque apenas nos 3 problemas mais críticos.
+- Para cada problema: impacto real e ação concreta. Linguagem simples e direta.
+- Resposta em no máximo ${MAX_REPORT_LINES} linhas.
+- Use o formato exato: RESUMO RÁPIDO, TOP 3 PROBLEMAS, O QUE FAZER AGORA, O QUE PODE ESPERAR.`;
 
-Gere um relatório profissional em Markdown com:
-1. Resumo Executivo
-2. Métricas Gerais
-3. Principais Problemas Identificados
-4. Recomendações Prioritárias
-5. Plano de Ação Sugerido
+  const userPrompt = `Relatório de análise para ${projectName || 'o projeto'}:
+Métricas médias: Risco ${avgRisk}%, ${metrics.count} arquivo(s) analisado(s).
+Achados já detectados (não descubra novos, só oriente):
+${findingsSummary}
+${systemTypeContext}
 
-Formato: Markdown profissional`;
+Gere APENAS o texto no formato abaixo, sem título extra. Máximo ${MAX_REPORT_LINES} linhas.
+
+RESUMO RÁPIDO
+- Situação geral em 2 frases
+
+TOP 3 PROBLEMAS
+1. [Problema]
+   - Impacto real:
+   - Ação recomendada:
+
+2. [Problema]
+   - Impacto real:
+   - Ação recomendada:
+
+3. [Problema]
+   - Impacto real:
+   - Ação recomendada:
+
+O QUE FAZER AGORA
+- Passo 1
+- Passo 2
+
+O QUE PODE ESPERAR
+- Itens de baixa urgência`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
         model: config.model || 'gpt-4-turbo-preview',
         messages: [
-          {
-            role: 'system',
-            content: 'Você é um especialista em relatórios técnicos de qualidade de código.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
         ],
-        temperature: 0.5,
-        max_tokens: 3000,
+        temperature: 0.3,
+        max_tokens: MAX_TOKENS_REPORT,
       }),
     });
 
@@ -275,11 +355,30 @@ Formato: Markdown profissional`;
     }
 
     const data = await response.json();
-    return data.choices[0]?.message?.content || 'Erro ao gerar relatório';
+    return data.choices[0]?.message?.content?.trim() || 'Erro ao gerar relatório';
   } catch (error: any) {
     console.error('Erro ao gerar relatório:', error);
     throw new Error(`Erro ao gerar relatório: ${error.message}`);
   }
+}
+
+/**
+ * Contexto por tipo de sistema (IA sem contexto = resposta genérica)
+ */
+function getSystemTypeContext(systemType?: SystemType, isLegacy?: boolean): string {
+  if (!systemType && !isLegacy) return '';
+  const parts: string[] = [];
+  if (isLegacy) parts.push('Sistema legado: priorize estabilidade e evite refatorações amplas.');
+  const ctx: Record<string, string> = {
+    'sistema-legado': 'Sistema legado: foco em riscos operacionais e débito técnico.',
+    'backend-critico': 'Backend crítico: foco em segurança, consistência e performance.',
+    'sql-heavy': 'Projeto com muito SQL: foco em injeção, índices e transações.',
+    'delphi-monolitico': 'Delphi monolítico: foco em memória, exceções e componentes.',
+    'api-publica': 'API pública: foco em validação, rate limit e autenticação.',
+    'generico': '',
+  };
+  if (systemType && ctx[systemType]) parts.push(ctx[systemType]);
+  return parts.length ? `\nContexto do projeto: ${parts.join(' ')}` : '';
 }
 
 /**
@@ -361,11 +460,22 @@ Contexto API:
 }
 
 /**
- * Normaliza resultado da análise da IA
+ * Normaliza resultado da análise da IA (inclui actionable quando presente)
  */
-function normalizeAIAnalysisResult(result: any): AIAnalysisResult {
+function normalizeAIAnalysisResult(result: any, _meta?: AnalysisMetadata): AIAnalysisResult {
+  const actionable = result.actionable
+    ? {
+        resumoRapido: result.actionable.resumoRapido || result.summary || '',
+        top3Problemas: Array.isArray(result.actionable.top3Problemas)
+          ? result.actionable.top3Problemas.slice(0, 3)
+          : [],
+        oQueFazerAgora: Array.isArray(result.actionable.oQueFazerAgora) ? result.actionable.oQueFazerAgora : [],
+        oQuePodeEsperar: Array.isArray(result.actionable.oQuePodeEsperar) ? result.actionable.oQuePodeEsperar : [],
+      }
+    : undefined;
+
   return {
-    improvements: Array.isArray(result.improvements) 
+    improvements: Array.isArray(result.improvements)
       ? result.improvements.map((imp: any) => ({
           type: imp.type || 'quality',
           severity: imp.severity || 'low',
@@ -388,5 +498,6 @@ function normalizeAIAnalysisResult(result: any): AIAnalysisResult {
       medium: result.consolidatedFindings?.medium || 0,
       low: result.consolidatedFindings?.low || 0,
     },
+    actionable,
   };
 }

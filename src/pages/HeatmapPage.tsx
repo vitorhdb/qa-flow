@@ -290,112 +290,131 @@ export default function HeatmapPage() {
           <div className="space-y-6">
             <RiskHeatmap items={filteredItems} onOpenFile={handleOpenFile} />
             
-            {/* Lista de arquivos filtrados */}
-            <div className="glass-panel p-6">
-              <h3 className="text-lg font-semibold mb-4">Arquivos ({filteredItems.length})</h3>
-              <div className="space-y-2 max-h-[600px] overflow-auto">
+            {/* Lista de arquivos filtrados — cards informativos */}
+            <div className="glass-panel p-6 sm:p-8">
+              <h3 className="text-lg font-semibold mb-1">Arquivos analisados</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {filteredItems.length} arquivo(s). Clique em um card ou na célula do mapa para ver detalhes do risco.
+              </p>
+              <div className="space-y-3 max-h-[560px] overflow-auto pr-1">
                 {filteredItems
                   .filter(item => item && item.filename && item.analysisResult)
                   .sort((a, b) => {
                     try {
-                      // Ordena por impacto x probabilidade (maior risco primeiro)
                       const scoreA = (a.impact || 1) * (a.probability || 1);
                       const scoreB = (b.impact || 1) * (b.probability || 1);
                       if (scoreB !== scoreA) return scoreB - scoreA;
                       const aLen = Array.isArray(a.analysisResult.findings) ? a.analysisResult.findings.length : 0;
                       const bLen = Array.isArray(b.analysisResult.findings) ? b.analysisResult.findings.length : 0;
                       return bLen - aLen;
-                    } catch (err) {
-                      console.error('Erro ao ordenar itens:', err);
+                    } catch {
                       return 0;
                     }
                   })
                   .map((item) => {
                     try {
-                      if (!item || !item.filename || !item.analysisResult) {
-                        return null;
-                      }
+                      if (!item || !item.filename || !item.analysisResult) return null;
                       const findingsLength = Array.isArray(item.analysisResult.findings) 
                         ? item.analysisResult.findings.length 
                         : 0;
                       const impact = item.impact || 1;
                       const probability = item.probability || 1;
-                      const securityScore = item.advancedMetrics?.security?.score ?? 0;
-                      const qualityScore = item.advancedMetrics?.quality?.score ?? 0;
-                      const robustnessScore = item.advancedMetrics?.robustness?.score ?? 0;
+                      const securityScore = item.advancedMetrics?.security?.score ?? item.analysisResult.scores?.security ?? 0;
+                      const qualityScore = item.advancedMetrics?.quality?.score ?? item.analysisResult.scores?.quality ?? 0;
                       const compositeScore = item.advancedMetrics?.compositeScore ?? 0;
+                      const riskScore = impact * probability;
+                      const isCritical = impact >= 4 && probability >= 4;
+                      const isHigh = impact >= 3 && probability >= 3 && !isCritical;
                       
                       return (
                         <div
                           key={item.filename}
                           className={cn(
-                            'flex items-center justify-between gap-3 rounded-lg border border-border p-3 hover:bg-secondary/50 transition-colors cursor-pointer',
-                            impact >= 4 && probability >= 4 && 'border-risk-critical/50 bg-risk-critical/5'
+                            'rounded-xl border p-4 transition-all cursor-pointer hover:shadow-md',
+                            isCritical && 'border-destructive/40 bg-destructive/5 hover:bg-destructive/10',
+                            isHigh && !isCritical && 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10',
+                            !isCritical && !isHigh && 'border-border bg-card/50 hover:bg-muted/40'
                           )}
                           onClick={() => handleOpenFile(item)}
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="font-mono text-sm truncate font-medium">{item.filename}</div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {findingsLength} achados • Impacto {impact} • Prob. {probability}
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-mono text-sm font-medium text-foreground truncate flex items-center gap-2">
+                                <FileCode className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                {item.filename}
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+                                <span>{findingsLength} achados</span>
+                                <span>Impacto {impact}</span>
+                                <span>Prob. {probability}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mt-3">
+                                <span className="inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                                  Segurança {securityScore}
+                                </span>
+                                <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                  Qualidade {qualityScore}
+                                </span>
+                                {compositeScore > 0 && (
+                                  <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                                    Score {compositeScore}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex flex-wrap gap-4 mt-2 text-xs">
-                              <span className="text-red-500">Segurança: {securityScore}</span>
-                              <span className="text-blue-500">Qualidade: {qualityScore}</span>
-                              <span className="text-green-500">Robustez: {robustnessScore}</span>
-                              <span className="text-purple-500">Score: {compositeScore}</span>
+                            <div className="flex flex-col items-end gap-2 shrink-0">
+                              <span className={cn(
+                                'rounded-lg px-2.5 py-1 text-xs font-semibold',
+                                isCritical && 'bg-destructive/20 text-destructive',
+                                isHigh && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
+                                !isCritical && !isHigh && 'bg-primary/10 text-primary'
+                              )}>
+                                Risco {riskScore}
+                              </span>
+                              <Button variant="outline" size="sm" className="gap-1" onClick={(e) => { e.stopPropagation(); handleOpenFile(item); }}>
+                                Ver detalhes
+                              </Button>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className={cn(
-                              'px-2 py-1 rounded text-xs font-medium',
-                              impact >= 4 && probability >= 4 ? 'bg-risk-critical/20 text-risk-critical' :
-                              impact >= 3 && probability >= 3 ? 'bg-status-warning/20 text-status-warning' :
-                              'bg-status-passed/20 text-status-passed'
-                            )}>
-                              Risco {impact * probability}
-                            </div>
-                            <Button variant="outline" size="sm">
-                              Ver detalhes
-                            </Button>
                           </div>
                         </div>
                       );
-                    } catch (err) {
-                      console.error('Erro ao renderizar item:', item, err);
+                    } catch {
                       return null;
                     }
                   })
-                  .filter(item => item !== null)}
+                  .filter(Boolean)}
               </div>
             </div>
 
-            {/* Estatísticas */}
+            {/* Estatísticas — cards visuais */}
             {allItems.length > 0 && (
-              <div className="glass-panel p-6">
-                <h3 className="text-lg font-semibold mb-4">Estatísticas</h3>
+              <div className="glass-panel p-6 sm:p-8">
+                <h3 className="text-lg font-semibold mb-1">Resumo do risco</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Distribuição dos arquivos por nível de risco (Impacto × Probabilidade).
+                </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <div className="text-2xl font-bold">{allItems.length}</div>
-                    <div className="text-sm text-muted-foreground">Total de arquivos</div>
+                  <div className="rounded-xl border border-border bg-card/50 p-4 text-center">
+                    <div className="text-2xl sm:text-3xl font-bold text-foreground">{allItems.length}</div>
+                    <div className="text-xs sm:text-sm text-muted-foreground mt-1">Total de arquivos</div>
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold text-risk-critical">
+                  <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-center">
+                    <div className="text-2xl sm:text-3xl font-bold text-destructive">
                       {allItems.filter(i => i.impact >= 4 && i.probability >= 4).length}
                     </div>
-                    <div className="text-sm text-muted-foreground">Alto risco</div>
+                    <div className="text-xs sm:text-sm text-muted-foreground mt-1">Alto risco (16–25)</div>
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold text-status-warning">
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-center">
+                    <div className="text-2xl sm:text-3xl font-bold text-amber-600 dark:text-amber-400">
                       {allItems.filter(i => i.impact >= 3 && i.probability >= 3 && !(i.impact >= 4 && i.probability >= 4)).length}
                     </div>
-                    <div className="text-sm text-muted-foreground">Risco médio</div>
+                    <div className="text-xs sm:text-sm text-muted-foreground mt-1">Risco médio (9–15)</div>
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold text-status-passed">
+                  <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-center">
+                    <div className="text-2xl sm:text-3xl font-bold text-primary">
                       {allItems.filter(i => i.impact <= 2 && i.probability <= 2).length}
                     </div>
-                    <div className="text-sm text-muted-foreground">Baixo risco</div>
+                    <div className="text-xs sm:text-sm text-muted-foreground mt-1">Baixo risco (1–4)</div>
                   </div>
                 </div>
               </div>

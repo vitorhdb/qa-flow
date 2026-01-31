@@ -113,7 +113,7 @@ export default function Index() {
       setIsAnalyzing(false);
     }
     
-    // Salva no banco de dados
+    // Salva no banco de dados (inclui actionable e code quando vêm da IA)
     try {
       await db.saveAnalysis({
         id: result.id,
@@ -123,6 +123,8 @@ export default function Index() {
         scores: result.scores,
         findings: result.findings,
         passed: result.passed,
+        ...(result.code !== undefined && { code: result.code }),
+        ...((result as { actionable?: unknown }).actionable !== undefined && { actionable: (result as { actionable?: unknown }).actionable }),
       });
     } catch (error) {
       console.error('Erro ao salvar análise:', error);
@@ -394,6 +396,8 @@ export default function Index() {
                 scores: result.scores,
                 findings: result.findings,
                 passed: result.passed,
+                ...(result.code !== undefined && { code: result.code }),
+                ...((result as { actionable?: unknown }).actionable !== undefined && { actionable: (result as { actionable?: unknown }).actionable }),
               });
             },
             { batchSize: 50 }

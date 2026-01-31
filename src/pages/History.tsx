@@ -70,11 +70,12 @@ export default function History() {
           id: analysis.id,
           timestamp: new Date(analysis.timestamp),
           filename: analysis.filename,
-          code: '',
+          code: analysis.code ?? '',
           language: analysis.language,
           scores: analysis.scores,
           findings: analysis.findings,
           passed: analysis.passed,
+          ...(analysis.actionable && { actionable: analysis.actionable }),
         },
       },
     });

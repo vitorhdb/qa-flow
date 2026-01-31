@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { FileRiskMatrixItem, RiskLevel } from "@/lib/risk-matrix";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { FileCode, Shield, TrendingUp, ChevronRight, Info, AlertTriangle, FolderOpen } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 interface RiskHeatmapProps {
   items: FileRiskMatrixItem[];
@@ -123,159 +125,234 @@ export function RiskHeatmap({ items, onOpenFile }: RiskHeatmapProps) {
   }, [byCell, selectedCell]);
 
   return (
-    <div className="glass-panel p-6 animate-fade-in">
-      <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-base sm:text-lg font-semibold">Mapa de Calor: Impacto x Probabilidade</h3>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Matriz 5x5 para priorização de risco por arquivo (impacto no negócio vs probabilidade)
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded heatmap-low" />
-            <span className="text-muted-foreground">Baixo</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded heatmap-medium" />
-            <span className="text-muted-foreground">Médio</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded heatmap-high" />
-            <span className="text-muted-foreground">Alto</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded heatmap-critical" />
-            <span className="text-muted-foreground">Crítico</span>
+    <div className="glass-panel p-6 sm:p-8 animate-fade-in overflow-visible">
+      {/* Cabeçalho com título e legenda informativa */}
+      <div className="mb-6">
+        <h3 className="text-lg sm:text-xl font-semibold tracking-tight">Mapa de Calor: Impacto × Probabilidade</h3>
+        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+          Cada célula agrupa arquivos pela combinação <strong>Impacto no negócio</strong> (eixo vertical) e <strong>Probabilidade de ocorrência</strong> (eixo horizontal). 
+          Quanto mais à direita e ao topo, maior o risco. Clique em uma célula para ver os arquivos.
+        </p>
+        <div className="flex flex-wrap items-center gap-4 mt-4 text-xs">
+          <span className="text-muted-foreground flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5" />
+            Legenda do risco:
+          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <div className="h-4 w-4 rounded heatmap-low shadow-sm" />
+              <span className="text-muted-foreground">Baixo (1–6)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-4 w-4 rounded heatmap-medium shadow-sm" />
+              <span className="text-muted-foreground">Médio (7–12)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-4 w-4 rounded heatmap-high shadow-sm" />
+              <span className="text-muted-foreground">Alto (13–18)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-4 w-4 rounded heatmap-critical shadow-sm" />
+              <span className="text-muted-foreground">Crítico (19–25)</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Matriz 5x5: linhas = impacto (5 no topo), colunas = probabilidade (1..5) */}
-      <div className="grid gap-1 sm:gap-2 overflow-x-auto" style={{ gridTemplateColumns: "auto repeat(5, minmax(60px, 1fr))" }}>
-        <div />
-        {[1, 2, 3, 4, 5].map((p) => (
-          <div key={p} className="text-center text-xs text-muted-foreground">
-            Prob. {p}
-          </div>
-        ))}
+      {/* Matriz 5x5 com eixos claros — sem scroll, mais área visível */}
+      <div 
+        className="grid gap-3 w-full max-w-4xl mx-auto overflow-visible"
+        style={{ gridTemplateColumns: "auto repeat(5, minmax(0, 1fr))" }}
+      >
+        <div className="row-span-1" />
+        <div className="col-span-5 flex justify-around pb-1 border-b border-border/50">
+          {[1, 2, 3, 4, 5].map((p) => (
+            <span key={p} className="text-xs font-medium text-muted-foreground w-10 text-center">
+              Prob. {p}
+            </span>
+          ))}
+        </div>
 
         {[5, 4, 3, 2, 1].map((impact) => (
           <div key={impact} className="contents">
-            <div className="flex items-center justify-center text-xs text-muted-foreground pr-2">
-              Impacto {impact}
+            <div className="flex items-center justify-end pr-2 text-xs font-medium text-muted-foreground border-r border-border/50">
+              Imp. {impact}
             </div>
-            {[1, 2, 3, 4, 5].map((probability) => {
-              const key = `${impact}-${probability}`;
-              const cellItems = byCell.get(key) || [];
-              const isClickable = cellItems.length > 0;
+            <div className="flex gap-2 col-span-5 py-0.5">
+              {[1, 2, 3, 4, 5].map((probability) => {
+                const key = `${impact}-${probability}`;
+                const cellItems = byCell.get(key) || [];
+                const isClickable = cellItems.length > 0;
+                const riskScore = impact * probability;
 
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  disabled={!isClickable}
-                  onClick={() => {
-                    try {
-                      setSelectedCell({ impact: impact as RiskLevel, probability: probability as RiskLevel });
-                      setOpen(true);
-                      setError(null);
-                    } catch (err) {
-                      console.error('Erro ao selecionar célula:', err);
-                      setError('Erro ao abrir detalhes da célula');
-                    }
-                  }}
-                  className={cn(
-                    "heatmap-cell aspect-square rounded-md border border-border/60 relative",
-                    getCellClass(impact as RiskLevel, probability as RiskLevel),
-                    isClickable ? "cursor-pointer hover:opacity-90" : "opacity-40 cursor-not-allowed"
-                  )}
-                  aria-label={`Impacto ${impact}, Probabilidade ${probability}, ${cellItems.length} arquivos`}
-                >
-                  {cellItems.length > 0 && (
-                    <span className="absolute right-1 top-1 rounded bg-background/60 px-1.5 py-0.5 text-[10px] text-foreground">
-                      {cellItems.length}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={!isClickable}
+                    onClick={() => {
+                      try {
+                        setSelectedCell({ impact: impact as RiskLevel, probability: probability as RiskLevel });
+                        setOpen(true);
+                        setError(null);
+                      } catch (err) {
+                        console.error('Erro ao selecionar célula:', err);
+                        setError('Erro ao abrir detalhes da célula');
+                      }
+                    }}
+                    className={cn(
+                      "heatmap-cell flex-1 min-w-0 aspect-square rounded-lg border-2 relative flex flex-col items-center justify-center transition-all duration-200",
+                      getCellClass(impact as RiskLevel, probability as RiskLevel),
+                      isClickable 
+                        ? "cursor-pointer hover:scale-105 hover:shadow-lg hover:z-10 border-border/80" 
+                        : "opacity-35 cursor-not-allowed border-transparent"
+                    )}
+                    aria-label={`Impacto ${impact}, Probabilidade ${probability}: ${cellItems.length} arquivo(s)`}
+                  >
+                    {cellItems.length > 0 ? (
+                      <>
+                        <span className="text-lg font-bold text-foreground drop-shadow-sm">
+                          {cellItems.length}
+                        </span>
+                        <span className="text-[10px] font-medium text-foreground/90 mt-0.5">
+                          arquivo{cellItems.length !== 1 ? "s" : ""}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground/50 text-xs">—</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ))}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              Arquivos em risco — Impacto {selectedCell ? levelLabel(selectedCell.impact) : ""} • Probabilidade{" "}
-              {selectedCell ? levelLabel(selectedCell.probability) : ""}
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="w-[95vw] max-w-3xl min-w-[320px] max-h-[88vh] flex flex-col gap-0 p-0 overflow-hidden sm:rounded-xl">
+          {/* Cabeçalho do diálogo */}
+          <div className="px-6 pr-12 pt-6 pb-4 shrink-0 border-b border-border/60 bg-muted/20">
+            <DialogHeader>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                  <FileCode className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <DialogTitle className="text-lg font-semibold tracking-tight">
+                    Arquivos nesta célula
+                  </DialogTitle>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Impacto {selectedCell?.impact ?? "—"} × Probabilidade {selectedCell?.probability ?? "—"}
+                  </p>
+                </div>
+                {selectedCell && (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold",
+                      getCellClass(selectedCell.impact, selectedCell.probability),
+                      "text-foreground"
+                    )}
+                  >
+                    Risco {(selectedCell.impact ?? 1) * (selectedCell.probability ?? 1)}
+                  </span>
+                )}
+              </div>
+            </DialogHeader>
+            {selectedItems.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {selectedItems.length} arquivo(s) com essa combinação. Clique em um arquivo para abrir o relatório.
+              </p>
+            )}
+          </div>
 
           {selectedItems.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Nenhum arquivo nesta célula.</div>
+            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 text-muted-foreground mb-4">
+                <FolderOpen className="h-8 w-8" />
+              </div>
+              <h4 className="font-medium text-foreground mb-1">Nenhum arquivo nesta célula</h4>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Não há arquivos analisados com essa combinação de impacto e probabilidade.
+              </p>
+            </div>
           ) : (
-            <div className="space-y-2">
-              {selectedItems
-                .slice()
-                .filter(item => item && item.filename && item.analysisResult)
-                .sort((a, b) => {
-                  try {
+            <ScrollArea className="flex-1 px-6 py-4" style={{ maxHeight: "calc(88vh - 180px)" }}>
+              <div className="space-y-2 pr-3">
+                {selectedItems
+                  .slice()
+                  .filter((item): item is FileRiskMatrixItem => !!item?.filename && !!item?.analysisResult)
+                  .sort((a, b) => {
                     const aLen = Array.isArray(a.analysisResult.findings) ? a.analysisResult.findings.length : 0;
                     const bLen = Array.isArray(b.analysisResult.findings) ? b.analysisResult.findings.length : 0;
                     return bLen - aLen;
-                  } catch (err) {
-                    console.error('Erro ao ordenar itens:', err);
-                    return 0;
-                  }
-                })
-                .map((item) => {
-                  try {
-                    if (!item || !item.filename || !item.analysisResult) {
-                      return null;
-                    }
+                  })
+                  .map((item, index) => {
                     const findingsLength = Array.isArray(item.analysisResult.findings) 
                       ? item.analysisResult.findings.length 
                       : 0;
-                    const securityScore = item.advancedMetrics?.security?.score ?? 0;
-                    const qualityScore = item.advancedMetrics?.quality?.score ?? 0;
-                    const robustnessScore = item.advancedMetrics?.robustness?.score ?? 0;
+                    const securityScore = item.advancedMetrics?.security?.score ?? item.analysisResult.scores?.security ?? 0;
+                    const qualityScore = item.advancedMetrics?.quality?.score ?? item.analysisResult.scores?.quality ?? 0;
                     const compositeScore = item.advancedMetrics?.compositeScore ?? 0;
-                    
+                    const riskScore = (item.impact || 1) * (item.probability || 1);
+                    const isCritical = riskScore >= 16;
+                    const isHigh = riskScore >= 9 && riskScore < 16;
+
                     return (
-                      <div key={item.filename} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-mono text-sm truncate font-medium">{item.filename}</div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {findingsLength} achados • Impacto {item.impact} • Prob. {item.probability}
+                      <button
+                        key={item.filename}
+                        type="button"
+                        onClick={() => {
+                          setOpen(false);
+                          onOpenFile?.(item);
+                        }}
+                        className={cn(
+                          "group w-full rounded-xl border bg-card transition-all hover:shadow-md text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                          isCritical && "border-l-4 border-l-destructive border-border bg-destructive/5",
+                          isHigh && !isCritical && "border-l-4 border-l-amber-500 border-border bg-amber-500/5",
+                          !isCritical && !isHigh && "border-border"
+                        )}
+                      >
+                        <div className="flex flex-wrap items-stretch gap-4 p-4 sm:flex-nowrap">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                            <FileCode className="h-5 w-5" />
                           </div>
-                          <div className="flex gap-4 mt-2 text-xs">
-                            <span className="text-red-500">Segurança: {securityScore}</span>
-                            <span className="text-blue-500">Qualidade: {qualityScore}</span>
-                            <span className="text-green-500">Robustez: {robustnessScore}</span>
-                            <span className="text-purple-500">Score: {compositeScore}</span>
+                          <div className="min-w-0 flex-1 sm:min-w-[120px]">
+                            <p className="font-mono text-sm font-medium text-foreground truncate" title={item.filename}>
+                              {item.filename}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                              <span>{findingsLength} achados</span>
+                              <Separator orientation="vertical" className="h-3" />
+                              <span>Impacto {item.impact}</span>
+                              <span>Prob. {item.probability}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
+                                <Shield className="h-3 w-3" />
+                                Segurança {securityScore}
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                                <TrendingUp className="h-3 w-3" />
+                                Qualidade {qualityScore}
+                              </span>
+                              {compositeScore > 0 && (
+                                <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                                  Score {compositeScore}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center text-muted-foreground group-hover:text-primary transition-colors self-center">
+                            <ChevronRight className="h-5 w-5" />
                           </div>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setOpen(false);
-                            onOpenFile?.(item);
-                          }}
-                        >
-                          Ver detalhes
-                        </Button>
-                      </div>
+                      </button>
                     );
-                  } catch (err) {
-                    console.error('Erro ao renderizar item:', item, err);
-                    return null;
-                  }
-                })
-                .filter(item => item !== null)}
-            </div>
+                  })}
+              </div>
+            </ScrollArea>
           )}
         </DialogContent>
       </Dialog>

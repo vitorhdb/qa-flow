@@ -2,12 +2,18 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FindingsList } from "@/components/dashboard/FindingsList";
-import { CodeEditor } from "@/components/dashboard/CodeEditor";
 import type { AnalysisResult, Finding } from "@/types/qa";
 import type { RiskLevel } from "@/lib/risk-matrix";
-import { mockFileContents } from "@/components/folder/mockData";
+import { exportSingleAnalysis } from "@/lib/export-history";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FileDown, FileCode, FileText, FileType } from "lucide-react";
+import { toast } from "sonner";
 
 interface LocationState {
   item?: {
@@ -35,7 +41,21 @@ export default function FileRiskDetails() {
   const { item } = (state || {}) as LocationState;
 
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [tab, setTab] = useState<"motivos" | "codigo">("motivos");
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async (format: 'pdf' | 'html' | 'markdown' | 'txt') => {
+    if (!item) return;
+    try {
+      setIsExporting(true);
+      await exportSingleAnalysis(item.analysisResult, format, true);
+      toast.success(`Relatório exportado em ${format.toUpperCase()} com sucesso!`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erro ao exportar';
+      toast.error(`Erro ao exportar: ${message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const data = useMemo(() => {
     if (!item) return null;
@@ -61,9 +81,6 @@ export default function FileRiskDetails() {
     );
   }
 
-  // Obtém o código completo do arquivo analisado
-  const code = item.analysisResult.code ?? mockFileContents[item.filename] ?? "";
-
   return (
     <div className="min-h-screen bg-background">
       <Header aiEnabled={aiEnabled} onAiToggle={setAiEnabled} />
@@ -86,33 +103,45 @@ export default function FileRiskDetails() {
             </div>
           </div>
 
-          <Button variant="outline" onClick={() => navigate(-1)}>
-            Voltar
-          </Button>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" disabled={isExporting}>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Exportar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                  <FileType className="h-4 w-4 mr-2" />
+                  PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('html')} disabled={isExporting}>
+                  <FileCode className="h-4 w-4 mr-2" />
+                  HTML
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('markdown')} disabled={isExporting}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Markdown
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('txt')} disabled={isExporting}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  TXT
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" onClick={() => navigate(-1)}>
+              Voltar
+            </Button>
+          </div>
         </div>
 
         <div className="glass-panel p-6">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-            <TabsList className="bg-secondary/50">
-              <TabsTrigger value="motivos">Motivos do risco ({data.motivos.length})</TabsTrigger>
-              <TabsTrigger value="codigo">Código</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="motivos" className="mt-4">
-              <p className="mb-3 text-sm text-muted-foreground">
-                Aqui estão os achados que justificam o risco para o negócio (segurança e qualidade).
-              </p>
-              <FindingsList findings={data.motivos as Finding[]} />
-            </TabsContent>
-
-            <TabsContent value="codigo" className="mt-4">
-              <CodeEditor 
-                value={code} 
-                onChange={() => {}} 
-                className="pointer-events-none opacity-95"
-              />
-            </TabsContent>
-          </Tabs>
+          <h3 className="text-lg font-medium mb-3">Motivos do risco ({data.motivos.length})</h3>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Aqui estão os achados que justificam o risco para o negócio (segurança e qualidade).
+          </p>
+          <FindingsList findings={data.motivos as Finding[]} showDetailTabs />
         </div>
       </main>
     </div>

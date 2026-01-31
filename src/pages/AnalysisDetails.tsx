@@ -5,7 +5,7 @@ import { QualityGate } from "@/components/dashboard/QualityGate";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { FindingsList } from "@/components/dashboard/FindingsList";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Shield, Zap, TrendingUp, FileDown } from "lucide-react";
+import { AlertTriangle, Shield, Zap, TrendingUp, FileDown, Sparkles, CheckCircle2, Clock } from "lucide-react";
 import type { AnalysisResult, Finding } from "@/types/qa";
 import { useMemo, useState } from "react";
 import { exportSingleAnalysis } from "@/lib/export-history";
@@ -87,6 +87,12 @@ export default function AnalysisDetails() {
   }
 
   const totalFindings = analysisResult.findings.length;
+  const actionable = (analysisResult as { actionable?: {
+    resumoRapido: string;
+    top3Problemas: Array<{ problema: string; impactoReal: string; acaoRecomendada: string; severity?: string }>;
+    oQueFazerAgora: string[];
+    oQuePodeEsperar: string[];
+  } }).actionable;
 
   return (
     <div className="min-h-screen bg-background">
@@ -159,6 +165,57 @@ export default function AnalysisDetails() {
             </Button>
           </div>
         </div>
+
+        {/* Orientações da IA (formato acionável: resumo, top 3, o que fazer agora, o que pode esperar) */}
+        {actionable && (
+          <div className="glass-panel p-5 border-primary/20 border space-y-4">
+            <h3 className="flex items-center gap-2 font-semibold text-lg">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Orientações da IA
+            </h3>
+            <p className="text-sm text-muted-foreground">{actionable.resumoRapido}</p>
+            {actionable.top3Problemas && actionable.top3Problemas.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Top 3 problemas</h4>
+                <ul className="space-y-3">
+                  {actionable.top3Problemas.map((p, i) => (
+                    <li key={i} className="rounded-lg bg-muted/50 p-3 text-sm">
+                      <span className="font-medium">{p.problema}</span>
+                      <p className="mt-1 text-muted-foreground"><span className="text-foreground">Impacto real:</span> {p.impactoReal}</p>
+                      <p className="mt-1 text-muted-foreground"><span className="text-foreground">Ação recomendada:</span> {p.acaoRecomendada}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {actionable.oQueFazerAgora && actionable.oQueFazerAgora.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-medium mb-1">O que fazer agora</h4>
+                  <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
+                    {actionable.oQueFazerAgora.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {actionable.oQuePodeEsperar && actionable.oQuePodeEsperar.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <Clock className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-medium mb-1">O que pode esperar</h4>
+                  <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
+                    {actionable.oQuePodeEsperar.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Resumo / Quality Gate */}
         <div className="glass-panel p-4">

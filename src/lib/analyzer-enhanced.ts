@@ -4,7 +4,13 @@
  */
 
 import { analyzeCode, type AnalysisResult } from './analyzer';
-import { analyzeCodeWithAI, getOpenAIConfig, type CodeImprovement } from './openai-service';
+import {
+  analyzeCodeWithAI,
+  getOpenAIConfig,
+  type CodeImprovement,
+  type AnalysisMetadata,
+  type SystemType,
+} from './openai-service';
 import { Finding } from '@/types/qa';
 
 export interface EnhancedAnalysisResult extends AnalysisResult {
@@ -12,6 +18,13 @@ export interface EnhancedAnalysisResult extends AnalysisResult {
   aiSummary?: string;
   aiRecommendations?: string[];
   consolidatedFindings: Finding[];
+  /** Resposta acionável da IA (resumo, top 3, o que fazer agora, o que pode esperar) */
+  actionable?: {
+    resumoRapido: string;
+    top3Problemas: Array<{ problema: string; impactoReal: string; acaoRecomendada: string; severity?: string }>;
+    oQueFazerAgora: string[];
+    oQuePodeEsperar: string[];
+  };
 }
 
 /**
@@ -35,14 +48,31 @@ export async function analyzeCodeWithAIEnhanced(
   }
 
   try {
-    // 3. Análise por IA consolidada com findings críticos do QA
+    // 3. Metadados para contextualizar a IA (menos genérico = melhor resposta)
+    const metadata: AnalysisMetadata = {
+      language: staticAnalysis.language,
+      riskScore: staticAnalysis.scores.risk,
+      qualityScore: staticAnalysis.scores.quality,
+      securityScore: staticAnalysis.scores.security,
+      systemType: inferSystemType(staticAnalysis.language, filename),
+      isLegacy: false,
+    };
+
+    // 4. IA age só sobre achados já detectados (nunca descobre problemas)
     const aiAnalysis = await analyzeCodeWithAI({
       code,
       language: staticAnalysis.language,
       filename,
+      qaFindings: staticAnalysis.findings.map((f) => ({
+        severity: f.severity,
+        title: f.title,
+        description: f.description,
+        line: f.line,
+      })),
+      metadata,
     });
 
-    // 4. Converte melhorias da IA em Findings
+    // 5. Converte melhorias da IA em Findings
     const aiFindings: Finding[] = aiAnalysis.improvements.map((imp) => ({
       id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       type: imp.type === 'security' ? 'security' : imp.type === 'performance' ? 'quality' : 'improvement',
@@ -67,7 +97,8 @@ export async function analyzeCodeWithAIEnhanced(
       aiSummary: aiAnalysis.summary,
       aiRecommendations: aiAnalysis.recommendations,
       consolidatedFindings,
-      findings: consolidatedFindings, // Mantém compatibilidade
+      findings: consolidatedFindings,
+      actionable: aiAnalysis.actionable,
     };
   } catch (error: any) {
     console.warn('Erro ao analisar com IA, usando apenas análise estática:', error);
@@ -77,6 +108,19 @@ export async function analyzeCodeWithAIEnhanced(
       consolidatedFindings: staticAnalysis.findings,
     };
   }
+}
+
+/**
+ * Infere tipo de sistema a partir da linguagem/arquivo (contextualiza a IA)
+ */
+function inferSystemType(language: string, filename?: string): SystemType {
+  const lang = language.toLowerCase();
+  const path = (filename || '').toLowerCase();
+  if (lang.includes('delphi') || path.includes('.pas') || path.includes('.dpr')) return 'delphi-monolitico';
+  if (lang.includes('sql') || path.includes('.sql')) return 'sql-heavy';
+  if (lang === 'api' || path.includes('/api/') || path.includes('api.')) return 'api-publica';
+  if (lang.includes('java') && (path.includes('service') || path.includes('backend'))) return 'backend-critico';
+  return 'generico';
 }
 
 /**
